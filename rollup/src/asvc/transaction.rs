@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::account::Account;
+use super::account::Account;
 
 pub type TxHash = Vec<u8>;
 pub type Amount = u64;

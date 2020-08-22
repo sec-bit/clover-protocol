@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::block::Block;
-use crate::transaction::{Transaction, TxHash};
+use super::block::Block;
+use super::transaction::{Transaction, TxHash};
 
 pub struct Storage {
     block_height: u32,
