@@ -1,0 +1,11 @@
+[package]
+name = "ckb_rollup"
+version = "0.1.0"
+authors = ["SECBIT Labs"]
+edition = "2018"
+
+[[bin]]
+path = "src/main.rs"
+name = "rollup"
+
+[dependencies]

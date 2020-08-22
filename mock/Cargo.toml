@@ -1,0 +1,18 @@
+[package]
+name = "mock"
+version = "0.1.0"
+authors = ["SECBIT Labs"]
+edition = "2018"
+
+[[bin]]
+path = "src/user.rs"
+name = "mock-user"
+
+[[bin]]
+path = "src/contract.rs"
+name = "mock-contract"
+
+
+[dependencies]
+tide = "0.13"
+async-std = { version = "1", features = ["attributes"] }
