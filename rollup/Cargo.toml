@@ -5,7 +5,14 @@ authors = ["SECBIT Labs"]
 edition = "2018"
 
 [[bin]]
-path = "src/main.rs"
+path = "src/asvc/server.rs"
 name = "rollup"
 
+[[bin]]
+path = "src/merkletree/server.rs"
+name = "rollup-merkletree"
+
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+tide = "0.13"
+async-std = { version = "1", features = ["attributes"] }

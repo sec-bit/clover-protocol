@@ -1027,6 +1027,11 @@ checksum = "3ce774f97919ed2458881e02ddf431ae82bc6203fbae8d75563b4499126c0ad2"
 [[package]]
 name = "ckb_rollup"
 version = "0.1.0"
+dependencies = [
+ "async-std",
+ "serde",
+ "tide",
+]
 
 [[package]]
 name = "clap"
