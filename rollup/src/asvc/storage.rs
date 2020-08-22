@@ -28,7 +28,14 @@ impl Storage {
         true
     }
 
+    /// miner new block.
     pub fn create_block(&mut self) -> Option<Block> {
         None
     }
+
+    /// handle when the block commit to L1.
+    pub fn handle_block(&mut self, block: Block) {}
+
+    /// if send to L1 failure, revert the block's txs.
+    pub fn revert_block(&mut self, block: Block) {}
 }

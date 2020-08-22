@@ -1,5 +1,5 @@
 [package]
-name = "ckb_rollup"
+name = "rollup"
 version = "0.1.0"
 authors = ["SECBIT Labs"]
 edition = "2018"
@@ -16,3 +16,4 @@ name = "rollup-merkletree"
 serde = { version = "1", features = ["derive"] }
 tide = "0.13"
 async-std = { version = "1", features = ["attributes"] }
+surf = "1"

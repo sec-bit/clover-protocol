@@ -35,14 +35,25 @@ async fn listen_contracts(_s: Arc<Mutex<Storage>>) -> Result<(), std::io::Error>
     }
 }
 
-/// listening task.
+/// Miner task.
 async fn miner(storage: Arc<Mutex<Storage>>) -> Result<(), std::io::Error> {
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
 
-        if let Some(_block) = storage.lock().await.create_block() {
-            // TODO Send to L1
+        if let Some(block) = storage.lock().await.create_block() {
+            if let Ok(mut res) = surf::post("http://127.0.0.1:8000/block")
+                .body_string(block.to_hex())
+                .await
+            {
+                println!(
+                    "block send L1 is success: {}",
+                    res.body_string().await.unwrap_or("None".to_owned())
+                );
+                storage.lock().await.handle_block(block);
+            } else {
+                storage.lock().await.revert_block(block);
+            }
         }
     }
 }

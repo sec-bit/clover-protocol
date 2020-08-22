@@ -1,6 +1,8 @@
 use async_std::task;
 use tide::{Error, Request};
 
+use rollup::asvc::block::Block;
+
 async fn deposit(mut req: Request<()>) -> Result<String, Error> {
     let data = req.body_string().await?;
     println!("Recv deposit hex: {:?}, len: {}", data, data.len());
@@ -18,6 +20,10 @@ async fn withdraw(mut req: Request<()>) -> Result<String, Error> {
 async fn block(mut req: Request<()>) -> Result<String, Error> {
     let data = req.body_string().await?;
     println!("Recv Block hex: {:?}, len: {}", data, data.len());
+
+    if let Ok(_block) = Block::from_hex(&data) {
+        // TODO verify block
+    }
 
     Ok("0x".to_owned())
 }

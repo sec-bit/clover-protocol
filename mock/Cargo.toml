@@ -14,5 +14,6 @@ name = "mock-contract"
 
 
 [dependencies]
+rollup = { path = "../rollup" }
 tide = "0.13"
 async-std = { version = "1", features = ["attributes"] }
