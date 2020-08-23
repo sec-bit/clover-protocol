@@ -1,5 +1,5 @@
 [package]
-name = "contract"
+name = "asvc_rollup"
 version = "0.1.0"
 authors = ["SECBIT Labs"]
 edition = "2018"

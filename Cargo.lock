@@ -3259,8 +3259,10 @@ name = "rollup"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "ckb-types",
  "ckb-zkp",
  "serde",
+ "serde_json",
  "surf",
  "tide",
 ]
