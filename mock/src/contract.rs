@@ -31,10 +31,14 @@ async fn block(mut req: Request<()>) -> Result<String, Error> {
 fn main() {
     tide::log::start();
     let mut app = tide::new();
-    app.at("/").get(|_| async { Ok("Hello, world!") });
+
+    // contracts
     app.at("/deposit").post(deposit);
     app.at("/withdraw").post(withdraw);
     app.at("/block").post(block);
+
+    // node
+    app.at("/").get(|_| async { Ok("Hello, world!") });
 
     task::block_on(app.listen("127.0.0.1:8000")).unwrap();
 }

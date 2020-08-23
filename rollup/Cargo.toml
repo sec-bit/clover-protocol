@@ -13,6 +13,7 @@ path = "src/merkletree/server.rs"
 name = "rollup-merkletree"
 
 [dependencies]
+ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc" }
 serde = { version = "1", features = ["derive"] }
 tide = "0.13"
 async-std = { version = "1", features = ["attributes"] }
