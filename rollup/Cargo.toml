@@ -25,3 +25,5 @@ tide = "0.13"
 async-std = { version = "1", features = ["attributes"] }
 surf = "1"
 rand = { version = "0.7" }
+mimc-rs = "0.0.2"
+num-bigint = "0.2.2"

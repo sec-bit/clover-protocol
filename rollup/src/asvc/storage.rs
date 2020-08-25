@@ -53,7 +53,6 @@ impl <E: PairingEngine> Storage<E> {
             block_changes: HashMap::new(),
             block_remove: HashMap::new(),
             full_pubkeys: vec![],
-
         }
     }
 
@@ -89,7 +88,7 @@ impl <E: PairingEngine> Storage<E> {
         let removes = Vec::<TxHash>::new();
         let txs = Vec::<Transaction::<E>>::new();
 
-        let counter_changes = E::Fr::from_repr((2u64.pow(20)).into());
+        let counter_changes = E::Fr::from_repr((2u64.pow(32)).into());
 
         for (tx_hash, tx) in self.pools {
             match tx.tx_type {

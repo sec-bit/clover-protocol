@@ -9,6 +9,9 @@ use ckb_zkp::math::{PairingEngine,  Zero};
 use ckb_zkp::curve::bn_256::Bn_256;
 use ckb_zkp::curve::PrimeField;
 use core::ops::Mul;
+use core::str::FromStr;
+use mimc_rs::{Mimc7, generate_constants,hash};
+use num_bigint::BigInt;
 
 mod account;
 mod block;
@@ -152,7 +155,7 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
         nonce: 0,
         proof: proof,
         balance: 0,  //TODO: 处理注册之前存的钱
-        addr: addr.mul(&E::Fr::from_repr((2u64.pow(35)).into()))
+        addr: addr.mul(&E::Fr::from_repr((2u64.pow(50)).into()))
     };
 
     if req.state().lock().await.try_insert_tx(tx) {
@@ -164,7 +167,20 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
 
 fn calcuAddr<E: PairingEngine>(full_pubkey: FullPubKey::<E>) ->  Result<E::Fr, Error>{
     // mimc
-    todo!()
+    let constants = generate_constants();
+    let mut big_arr1: Vec<BigInt> = Vec::new();
+    let bi: BigInt = BigInt::parse_bytes(b"i", full_pubkey.i).unwrap();
+    big_arr1.push(bi.clone());
+    let h1 = hash(big_arr1).unwrap();
+    //TODO: add upk
+    let result = E::Fr::from_str(h1.to_string());
+    let value = match result {
+        Ok(result) => result,
+        Err(error) => {
+           return Err(Error::from_str(StatusCode::Ok, "failed to calculate address"));
+        },
+    };
+    Ok(value)
 }
 
 /// withdraw api.
