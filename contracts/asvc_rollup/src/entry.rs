@@ -31,7 +31,26 @@ pub fn main() -> Result<(), Error> {
     };
     let now_upk_lock = load_cell_lock_hash(1, Source::Output)?;
 
-    if now_com_lock != now_upk_lock {
+    let pre_commit = match load_cell_data(0, Source::Input) {
+        Ok(data) => data,
+        Err(err) => return Err(err.into()),
+    };
+    let pre_com_lock = load_cell_lock_hash(0, Source::Input)?;
+
+    let pre_upk = match load_cell_data(1, Source::Input) {
+        Ok(data) => data,
+        Err(err) => return Err(err.into()),
+    };
+    let pre_upk_lock = load_cell_lock_hash(1, Source::Input)?;
+
+    if now_upk != pre_upk {
+        return Err(Error::Upk);
+    }
+
+    if (now_com_lock != now_upk_lock)
+        || (now_com_lock != pre_com_lock)
+        || (now_com_lock != pre_upk_lock)
+    {
         return Err(Error::Verify);
     }
 
@@ -49,19 +68,6 @@ pub fn main() -> Result<(), Error> {
             // output2 => upk
             // output3 => now_udt_pool
             // output4..n => udt_change
-
-            // 1. commit cell
-            let pre_commit = match load_cell_data(0, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            let pre_upk = match load_cell_data(1, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            if now_upk != pre_upk {
-                return Err(Error::Upk);
-            }
 
             // 2. pre udt amount in pool.
             let pre_amount = match load_cell_data(2, Source::Input) {
@@ -148,7 +154,7 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 7. verify commit info.
-            verify(pre_commit, now_commit, now_upk)
+            verify(pre_commit, now_commit, now_upk, deposit_amount, true)
         }
         2u8 => {
             // WITHDRAW
@@ -159,19 +165,6 @@ pub fn main() -> Result<(), Error> {
             // output1 => now_commit
             // output2 => now_udt_pool
             // output3..n => udt_unspend
-
-            // 1. previous commit cell
-            let pre_commit = match load_cell_data(0, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            let pre_upk = match load_cell_data(1, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            if now_upk != pre_upk {
-                return Err(Error::Upk);
-            }
 
             // 2. pre udt amount in pool.
             let pre_amount = match load_cell_data(2, Source::Input) {
@@ -239,7 +232,7 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 6. verify commit.
-            verify(pre_commit, now_commit, now_upk)
+            verify(pre_commit, now_commit, now_upk, withdraw_amount, false)
         }
         3u8 => {
             // POST BLOCK
@@ -247,30 +240,24 @@ pub fn main() -> Result<(), Error> {
             // input1 => pre_commit
             // output1 => now_commit
 
-            // commit cell
-            let pre_commit = match load_cell_data(0, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            let pre_upk = match load_cell_data(1, Source::Input) {
-                Ok(data) => data,
-                Err(err) => return Err(err.into()),
-            };
-            if now_upk != pre_upk {
-                return Err(Error::Upk);
-            }
-
             // post block proof
-            verify(pre_commit, now_commit, now_upk)
+            verify(pre_commit, now_commit, now_upk, 0, false)
         }
         _ => Err(Error::Encoding),
     }
 }
 
-fn verify(pre: Vec<u8>, now: Vec<u8>, upk: Vec<u8>) -> Result<(), Error> {
+fn verify(
+    pre: Vec<u8>,
+    now: Vec<u8>,
+    upk: Vec<u8>,
+    change: u128,
+    is_add: bool,
+) -> Result<(), Error> {
     debug!("pre: {:?}", pre);
     debug!("now: {:?}", now);
     debug!("upk: {:?}", upk);
+    debug!("change: {}{}", if is_add { "+" } else { "-" }, change);
 
     Ok(())
 }
