@@ -1,8 +1,8 @@
 use super::*;
-use ckb_testtool::context::Context;
+use ckb_testtool::{builtin::ALWAYS_SUCCESS, context::Context};
 use ckb_tool::ckb_types::{
     bytes::Bytes,
-    core::TransactionBuilder,
+    core::{Capacity, TransactionBuilder},
     packed::*,
     prelude::*,
 };
@@ -10,56 +10,62 @@ use ckb_tool::ckb_types::{
 const MAX_CYCLES: u64 = 10_000_000;
 
 #[test]
-fn test_basic() {
+fn test_asvc() {
     // deploy contract
     let mut context = Context::default();
-    let contract_bin: Bytes = Loader::default().load_binary("contract");
-    let out_point = context.deploy_cell(contract_bin);
 
-    // prepare scripts
-    let lock_script = context
-        .build_script(&out_point, Default::default())
+    println!("start deploy contract...");
+    let success_point = context.deploy_cell(ALWAYS_SUCCESS.clone());
+    let success_lock_script = context
+        .build_script(&success_point, Default::default())
         .expect("script");
-    let lock_script_dep = CellDep::new_builder()
-        .out_point(out_point)
-        .build();
+    let success_lock_script_dep = CellDep::new_builder().out_point(success_point).build();
 
-    // prepare cells
-    let input_out_point = context.create_cell(
+    let rollup_bin: Bytes = Loader::default().load_binary("asvc_rollup");
+    let rollup_point = context.deploy_cell(rollup_bin);
+    let rollup_script_args: Bytes = [0u8; 1].to_vec().into();
+    let rollup_lock_script = context
+        .build_script(&rollup_point, rollup_script_args)
+        .expect("script");
+    let rollup_lock_script_dep = CellDep::new_builder().out_point(rollup_point).build();
+    println!("over deploy contract...");
+
+    // ----- Init State -------
+    println!("start init state...");
+
+    println!("over init state...");
+    // ----- End Init State ---
+
+    // ----- Deposit ----------
+    println!("start deposit...");
+    // inputs udt demo
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+    let udt_input_out_point = context.create_cell(
         CellOutput::new_builder()
-            .capacity(1000u64.pack())
-            .lock(lock_script.clone())
+            .capacity(input_ckb.pack())
+            .lock(success_lock_script.clone())
             .build(),
-        Bytes::new(),
+        //.type_(Some(sudt_script.clone()).pack()) Type will use UDT
+        100u128.to_le_bytes().to_vec().into(),
     );
-    let input = CellInput::new_builder()
-        .previous_output(input_out_point)
+    let udt_input = CellInput::new_builder()
+        .previous_output(udt_input_out_point)
         .build();
-    let outputs = vec![
-        CellOutput::new_builder()
-            .capacity(500u64.pack())
-            .lock(lock_script.clone())
-            .build(),
-        CellOutput::new_builder()
-            .capacity(500u64.pack())
-            .lock(lock_script)
-            .build(),
-    ];
 
-    let outputs_data = vec![Bytes::new(); 2];
+    println!("over deposit...");
+    // ----- End Deposit -------
 
-    // build transaction
-    let tx = TransactionBuilder::default()
-        .input(input)
-        .outputs(outputs)
-        .outputs_data(outputs_data.pack())
-        .cell_dep(lock_script_dep)
-        .build();
-    let tx = context.complete_tx(tx);
+    // ----- POST block -------
+    println!("start post block...");
 
-    // run
-    let cycles = context
-        .verify_tx(&tx, MAX_CYCLES)
-        .expect("pass verification");
-    println!("consume cycles: {}", cycles);
+    println!("over post block...");
+    // ----- End POST block ---
+
+    // ----- Withdraw ---------
+    println!("start withdraw...");
+
+    println!("over withdraw...");
+    // ----- End Withdraw -----
+
+    println!("all over.");
 }

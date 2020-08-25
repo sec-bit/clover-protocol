@@ -1,6 +1,14 @@
 use serde_json::{json, Value};
 
-use ckb_types::core::TransactionBuilder;
+use ckb_tool::{
+    ckb_jsonrpc_types as json_types,
+    ckb_types::{
+        bytes::Bytes,
+        core::{Capacity, TransactionBuilder, TransactionView},
+        packed::*,
+        prelude::*,
+    },
+};
 
 const NODE_RPC_ADDR: &'static str = "http://127.0.0.1:8114";
 
@@ -24,16 +32,21 @@ pub async fn query_block_deposits(block_height: u64) -> Result<(Vec<Tx>, u64), (
         .map_err(|_e| ())?
         .await
     {
-        Ok(mut res) => {
-            if let Ok(mut value) = res.body_json::<Value>().await {
+        Ok(mut res) => match res.body_json::<Value>().await {
+            Ok(mut value) => {
                 let result = value["result"].take();
                 let hex_num = result.as_str().ok_or(())?;
                 u64::from_str_radix(&hex_num[2..], 16).map_err(|_| ())?
-            } else {
+            }
+            Err(err) => {
+                println!("Listening err: {:?}", err);
                 return Err(());
             }
+        },
+        Err(err) => {
+            println!("Listening query err: {:?}", err);
+            return Err(());
         }
-        Err(err) => return Err(()),
     };
 
     println!("now_height: {:?}", now_height);
@@ -79,48 +92,82 @@ pub async fn query_block_deposits(block_height: u64) -> Result<(Vec<Tx>, u64), (
     Ok((deposit_txs, block_height))
 }
 
-pub async fn post_block() -> Result<String, ()> {
-    let tx = json!(
-          {
-            "cell_deps": [
-                {
-                    "dep_type": "code",
-                    "out_point": {
-                        "index": "0x0",
-                        "tx_hash": "0xa4037a893eb48e18ed4ef61034ce26eba9c585f15c9cee102ae58505565eccc3"
-                    }
-                }
-            ],
-            "header_deps": [
-                "0x7978ec7ce5b507cfb52e149e36b1a23f6062ed150503c85bbf825da3599095ed"
-            ],
-            "inputs": [
-                {
-                    "previous_output": {
-                        "index": "0x0",
-                        "tx_hash": "0x365698b50ca0da75dca2c87f9e7b563811d3b5813736b8cc62cc3b106faceb17"
-                    },
-                    "since": "0x0"
-                }
-            ],
-            "outputs": [
-                {
-                    "capacity": "0x2540be400",
-                    "lock": {
-                        "args": "0x",
-                        "code_hash": "0x28e83a1277d48add8e72fadaa9248559e1b632bab2bd60b27955ebc4c03800a5",
-                        "hash_type": "data"
-                    },
-                    "type": null
-                }
-            ],
-            "outputs_data": [
-                "0x"
-            ],
-            "version": "0x0",
-            "witnesses": []
-        }
-    );
+/// asvc rollup contract address.
+const asvc_contract_hash: &'static str = "0x";
+
+/// asvc asset locked contract address.
+const asvc_asset_hash: &'static str = "0x";
+
+/// merkle tree rollup contract address.
+const merkletree_contract_hash: &'static str = "0x";
+
+/// merkle tree asset locked contract address.
+const merkletree_asset_hash: &'static str = "0x";
+
+/// init state of L2
+pub async fn init_state(prev: String, contract: String, script: String) -> Result<String, ()> {
+    let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
+    let lock_cell_point = OutPoint::new_unchecked(Bytes::from(contract));
+    let dep_point = CellDep::new_builder().out_point(lock_cell_point).build();
+    let lock_point = Script::new_unchecked(Bytes::from(script));
+
+    let input = CellInput::new_builder().previous_output(prev_point).build();
+
+    let output = CellOutput::new_builder()
+        .capacity(500u64.pack())
+        .lock(lock_point)
+        .build();
+
+    // data here
+    let outputs_data = vec![Bytes::new(); 3];
+
+    // build transaction
+    let tx = TransactionBuilder::default()
+        .inputs(vec![input])
+        .outputs(vec![output])
+        .outputs_data(outputs_data.pack())
+        .cell_dep(dep_point)
+        .build();
+
+    send_tx(tx).await
+}
+
+pub async fn post_block(prev: String, contract: String) -> Result<String, ()> {
+    let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
+    let lock_point = OutPoint::new_unchecked(Bytes::from(contract.clone()));
+    let lock_script_point = Script::new_unchecked(Bytes::from(contract));
+    let dep_point = CellDep::new_builder().out_point(lock_point).build();
+
+    let input = CellInput::new_builder().previous_output(prev_point).build();
+
+    let output = CellOutput::new_builder()
+        .capacity(500u64.pack())
+        .lock(lock_script_point)
+        .build();
+
+    let outputs_data = vec![Bytes::new(); 2];
+
+    // build transaction
+    let tx = TransactionBuilder::default()
+        .inputs(vec![input])
+        .outputs(vec![output])
+        .outputs_data(outputs_data.pack())
+        .cell_dep(dep_point)
+        .build();
+
+    send_tx(tx).await
+}
+
+pub async fn user_deposit(prev: String, asset: String) -> Result<String, ()> {
+    todo!()
+}
+
+pub async fn user_withdraw() -> Result<String, ()> {
+    todo!()
+}
+
+async fn send_tx(tx: TransactionView) -> Result<String, ()> {
+    let tx_json = json_types::TransactionView::from(tx);
 
     // Build a CKB Transaction
     let rpc_call = json!(
@@ -128,9 +175,11 @@ pub async fn post_block() -> Result<String, ()> {
             "id": 0,
             "jsonrpc": "2.0",
             "method": "send_transaction",
-            "params": [tx],
+            "params": [tx_json],
         }
     );
+
+    println!("rpc_call: {:?}", rpc_call);
 
     // NODE RPC send_transaction
     match surf::post(NODE_RPC_ADDR)
@@ -139,7 +188,7 @@ pub async fn post_block() -> Result<String, ()> {
         .await
     {
         Ok(mut res) => match res.body_json::<Value>().await {
-            Ok(mut value) => {
+            Ok(value) => {
                 println!("{:?}", value);
                 let tx_id = value["result"].as_str().ok_or(())?;
                 println!("tx_id: {:?}", tx_id);

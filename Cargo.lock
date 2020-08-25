@@ -3336,7 +3336,7 @@ name = "rollup"
 version = "0.1.0"
 dependencies = [
  "async-std",
- "ckb-types",
+ "ckb-tool",
  "ckb-zkp",
  "mimc-rs",
  "num-bigint",

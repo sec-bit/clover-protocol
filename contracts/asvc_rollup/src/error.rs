@@ -8,6 +8,9 @@ pub enum Error {
     LengthNotEnough,
     Encoding,
     // Add customized errors here...
+    Amount,
+    Verify,
+    Upk,
 }
 
 impl From<SysError> for Error {
@@ -22,4 +25,3 @@ impl From<SysError> for Error {
         }
     }
 }
-

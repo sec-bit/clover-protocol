@@ -3,7 +3,3 @@ deployment = "deployment.toml"
 [[contracts]]
 name = "asvc_rollup"
 template_type = "Rust"
-
-[[contracts]]
-name = "asvc_unlock"
-template_type = "Rust"
