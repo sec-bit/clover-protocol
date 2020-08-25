@@ -1,7 +1,12 @@
 use alloc::vec::Vec;
 use core::result::Result;
 
-use ckb_std::{ckb_constants::Source, debug, error::SysError, high_level::load_cell_data};
+use ckb_std::{
+    ckb_constants::Source,
+    debug,
+    error::SysError,
+    high_level::{load_cell_data, load_cell_lock_hash},
+};
 
 use crate::error::Error;
 
@@ -103,6 +108,12 @@ pub fn main() -> Result<(), Error> {
                 Err(err) => return Err(err.into()),
             };
 
+            let int_lock = load_cell_lock_hash(2, Source::Input)?;
+            let out_lock = load_cell_lock_hash(2, Source::Output)?;
+            if int_lock != out_lock {
+                return Err(Error::Amount);
+            }
+
             // 5. change outputs udt.
             let mut change_amount: u128 = 0;
             let mut change_buf = [0u8; UDT_LEN];
@@ -138,7 +149,8 @@ pub fn main() -> Result<(), Error> {
             // WITHDRAW
             //
             // input1 => pre_commit
-            // input2 => pre_udt_pool
+            // input2 => pre_upk
+            // input3 => pre_udt_pool
             // output1 => now_commit
             // output2 => now_udt_pool
             // output3..n => udt_unspend
@@ -183,6 +195,16 @@ pub fn main() -> Result<(), Error> {
                 }
                 Err(err) => return Err(err.into()),
             };
+            let int_lock = load_cell_lock_hash(2, Source::Input)?;
+            let out_lock = load_cell_lock_hash(2, Source::Output)?;
+            if int_lock != out_lock {
+                return Err(Error::Amount);
+            }
+            let int_lock = load_cell_lock_hash(2, Source::Input)?;
+            let out_lock = load_cell_lock_hash(2, Source::Output)?;
+            if int_lock != out_lock {
+                return Err(Error::Amount);
+            }
 
             // 4. outputs udt.
             let mut withdraw_amount: u128 = 0;
