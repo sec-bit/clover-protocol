@@ -1,13 +1,7 @@
 use alloc::vec::Vec;
 use core::result::Result;
 
-use ckb_std::{
-    ckb_constants::Source,
-    ckb_types::{bytes::Bytes, prelude::*},
-    debug,
-    error::SysError,
-    high_level::{load_cell_data, load_script, load_tx_hash},
-};
+use ckb_std::{ckb_constants::Source, debug, error::SysError, high_level::load_cell_data};
 
 use crate::error::Error;
 
@@ -15,17 +9,8 @@ use crate::error::Error;
 const UDT_LEN: usize = 16; // u128
 
 pub fn main() -> Result<(), Error> {
-    // remove below examples and write your code here
-
-    let script = load_script()?;
-    let args: Bytes = script.args().unpack();
-    debug!("script args is {:?}", args);
-
-    let tx_hash = load_tx_hash()?;
-    debug!("tx hash is {:?}", tx_hash);
-
     // load now commit
-    let now_commit = match load_cell_data(0, Source::GroupOutput) {
+    let now_commit = match load_cell_data(0, Source::Output) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
@@ -34,7 +19,7 @@ pub fn main() -> Result<(), Error> {
         return Err(Error::LengthNotEnough);
     }
 
-    let now_upk = match load_cell_data(1, Source::GroupOutput) {
+    let now_upk = match load_cell_data(1, Source::Output) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
@@ -59,11 +44,11 @@ pub fn main() -> Result<(), Error> {
             // output4..n => udt_change
 
             // 1. commit cell
-            let pre_commit = match load_cell_data(0, Source::GroupInput) {
+            let pre_commit = match load_cell_data(0, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };
-            let pre_upk = match load_cell_data(1, Source::GroupInput) {
+            let pre_upk = match load_cell_data(1, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };
@@ -72,7 +57,7 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 2. pre udt amount in pool.
-            let pre_amount = match load_cell_data(2, Source::GroupInput) {
+            let pre_amount = match load_cell_data(2, Source::Input) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
                     if data.len() != UDT_LEN {
@@ -90,7 +75,7 @@ pub fn main() -> Result<(), Error> {
             let mut deposit_buf = [0u8; UDT_LEN];
 
             for i in 3.. {
-                let data = match load_cell_data(i, Source::GroupInput) {
+                let data = match load_cell_data(i, Source::Input) {
                     Ok(data) => data,
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
@@ -105,7 +90,7 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 4. output udt amount.
-            let now_amount = match load_cell_data(2, Source::GroupOutput) {
+            let now_amount = match load_cell_data(2, Source::Output) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
                     if data.len() != UDT_LEN {
@@ -123,7 +108,7 @@ pub fn main() -> Result<(), Error> {
             let mut change_buf = [0u8; UDT_LEN];
 
             for i in 3.. {
-                let data = match load_cell_data(i, Source::GroupOutput) {
+                let data = match load_cell_data(i, Source::Output) {
                     Ok(data) => data,
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
@@ -159,11 +144,11 @@ pub fn main() -> Result<(), Error> {
             // output3..n => udt_unspend
 
             // 1. previous commit cell
-            let pre_commit = match load_cell_data(0, Source::GroupInput) {
+            let pre_commit = match load_cell_data(0, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };
-            let pre_upk = match load_cell_data(1, Source::GroupInput) {
+            let pre_upk = match load_cell_data(1, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };
@@ -172,7 +157,7 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 2. pre udt amount in pool.
-            let pre_amount = match load_cell_data(2, Source::GroupInput) {
+            let pre_amount = match load_cell_data(2, Source::Input) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
                     if data.len() != UDT_LEN {
@@ -186,7 +171,7 @@ pub fn main() -> Result<(), Error> {
             };
 
             // 3. now udt pool amount.
-            let now_amount = match load_cell_data(2, Source::GroupOutput) {
+            let now_amount = match load_cell_data(2, Source::Output) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
                     if data.len() != UDT_LEN {
@@ -204,7 +189,7 @@ pub fn main() -> Result<(), Error> {
             let mut withdraw_buf = [0u8; UDT_LEN];
 
             for i in 3.. {
-                let data = match load_cell_data(i, Source::GroupOutput) {
+                let data = match load_cell_data(i, Source::Output) {
                     Ok(data) => data,
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
@@ -233,11 +218,11 @@ pub fn main() -> Result<(), Error> {
             // output1 => now_commit
 
             // commit cell
-            let pre_commit = match load_cell_data(0, Source::GroupInput) {
+            let pre_commit = match load_cell_data(0, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };
-            let pre_upk = match load_cell_data(1, Source::GroupInput) {
+            let pre_upk = match load_cell_data(1, Source::Input) {
                 Ok(data) => data,
                 Err(err) => return Err(err.into()),
             };

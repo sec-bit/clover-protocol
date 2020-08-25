@@ -4,17 +4,17 @@ version = "0.1.0"
 authors = ["SECBIT Labs"]
 edition = "2018"
 
-[[bin]]
-path = "src/asvc/server.rs"
-name = "rollup"
+# [[bin]]
+# path = "src/asvc/server.rs"
+# name = "rollup"
 
-[[bin]]
-path = "src/merkletree/server.rs"
-name = "rollup-merkletree"
+# [[bin]]
+# path = "src/merkletree/server.rs"
+# name = "rollup-merkletree"
 
-[[bin]]
-path = "src/test.rs"
-name = "test"
+# [[bin]]
+# path = "src/test.rs"
+# name = "test"
 
 [dependencies]
 ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc" }
