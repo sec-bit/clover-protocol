@@ -166,6 +166,7 @@ impl <E: PairingEngine> Storage<E> {
                         Ok(result) => result,
                     };
                     tx.proof = self.proofs[tx.i as usize];
+                    self.full_pubkeys[tx.i as usize] = tx.full_pubkey;
                 }
             };
             txs.push(tx);
@@ -273,14 +274,3 @@ impl <E: PairingEngine> Storage<E> {
         self.commit = new_commit;
     }
 }
-   
-
-// pub tx_type: u8,
-// pub full_pubkey: FullPubKey<E>,
-// pub i: u32,
-// pub j: u32,
-// pub j_updatekey: UpdateKey<E>,
-// pub value: u32,
-// pub nonce: u32,
-// pub proof: Proof<E>,
-// pub balance: u32,

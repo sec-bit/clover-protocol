@@ -82,8 +82,6 @@ async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -
     let nonce = req.state().lock().await.nonces[i as usize];
     let proof = req.state().lock().await.proofs[i as usize];
 
-    
-
     if user_height <= i  || i < 0{
         return Err(Error::from_str(StatusCode::Ok, "the user number is invalid"))
     }
@@ -106,7 +104,7 @@ async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -
         j_updatekey: j_updatekey,
         nonce:tx.nonce,
         proof: proof,
-        balance: balance,  // 处理注册之前存的钱
+        balance: balance,  //TODO: 处理注册之前存的钱
     };
     
     if req.state().lock().await.try_insert_tx(tx) {
@@ -150,7 +148,7 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
         j_updatekey: update_keys,
         nonce: 0,
         proof: proof,
-        balance: 0,  // 处理注册之前存的钱
+        balance: 0,  //TODO: 处理注册之前存的钱
     };
 
     if req.state().lock().await.try_insert_tx(tx) {
