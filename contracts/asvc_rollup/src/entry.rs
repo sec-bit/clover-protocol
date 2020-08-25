@@ -19,6 +19,7 @@ pub fn main() -> Result<(), Error> {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
+    let now_com_lock = load_cell_lock_hash(0, Source::Output)?;
 
     if now_commit.len() == 0 {
         return Err(Error::LengthNotEnough);
@@ -28,14 +29,15 @@ pub fn main() -> Result<(), Error> {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
+    let now_upk_lock = load_cell_lock_hash(1, Source::Output)?;
+
+    if now_com_lock != now_upk_lock {
+        return Err(Error::Verify);
+    }
 
     let op = now_commit[0];
 
     match op {
-        0u8 => {
-            // Init state
-            Ok(())
-        }
         1u8 => {
             // DEPOSIT
             //
@@ -112,6 +114,9 @@ pub fn main() -> Result<(), Error> {
             let out_lock = load_cell_lock_hash(2, Source::Output)?;
             if int_lock != out_lock {
                 return Err(Error::Amount);
+            }
+            if now_com_lock != int_lock {
+                return Err(Error::Verify);
             }
 
             // 5. change outputs udt.
@@ -204,6 +209,9 @@ pub fn main() -> Result<(), Error> {
             let out_lock = load_cell_lock_hash(2, Source::Output)?;
             if int_lock != out_lock {
                 return Err(Error::Amount);
+            }
+            if now_com_lock != int_lock {
+                return Err(Error::Verify);
             }
 
             // 4. outputs udt.
