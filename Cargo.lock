@@ -3261,6 +3261,7 @@ dependencies = [
  "async-std",
  "ckb-types",
  "ckb-zkp",
+ "rand 0.7.3",
  "serde",
  "serde_json",
  "surf",

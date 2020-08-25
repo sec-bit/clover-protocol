@@ -3,18 +3,24 @@ use async_std::{
     task,
 };
 use std::time::Duration;
-use tide::{Error, Request};
+use tide::{Error, Request, StatusCode};
+
+use ckb_zkp::math::PairingEngine;
+use ckb_zkp::curve:: bn_256::Bn_256;
 
 mod account;
 mod block;
 mod storage;
 mod transaction;
+mod asvc;
 
 use storage::Storage;
-use transaction::Transaction;
+use transaction::{Transaction, FullPubKey};
+use asvc::initialize_asvc;
+
 
 /// listening task.
-async fn listen_contracts(_s: Arc<Mutex<Storage>>) -> Result<(), std::io::Error> {
+async fn listen_contracts<E: PairingEngine>(_s: Arc<Mutex<Storage::<E>>>) -> Result<(), std::io::Error> {
     let mut l1_block_height = 0;
 
     loop {
@@ -36,7 +42,7 @@ async fn listen_contracts(_s: Arc<Mutex<Storage>>) -> Result<(), std::io::Error>
 }
 
 /// Miner task.
-async fn miner(storage: Arc<Mutex<Storage>>) -> Result<(), std::io::Error> {
+async fn miner<E: PairingEngine> (storage: Arc<Mutex<Storage::<E>>>) -> Result<(), std::io::Error> {
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
@@ -59,9 +65,93 @@ async fn miner(storage: Arc<Mutex<Storage>>) -> Result<(), std::io::Error> {
 }
 
 /// send transaction api.
-async fn send_tx(mut req: Request<Arc<Mutex<Storage>>>) -> Result<String, Error> {
-    let tx: Transaction = req.body_json().await?;
+async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -> Result<String, Error> {
+    let mut tx: Transaction<E> = req.body_json().await?;
     println!("Recv tx: {:?}", tx.hash());
+
+    let i = tx.i;
+    let j = tx.j;
+
+    let block_height = req.state().lock().await.block_height;
+    let user_height = req.state().lock().await.next_user;
+    let commit = req.state().lock().await.commit;
+    let n = req.state().lock().await.size;
+    let full_pubkey = req.state().lock().await.full_pubkeys[i as usize];
+    let j_updatekey = req.state().lock().await.full_pubkeys[j as usize].updateKey;
+    let value = req.state().lock().await.values[i as usize];
+    let nonce = req.state().lock().await.nonces[i as usize];
+    let proof = req.state().lock().await.proofs[i as usize];
+
+    
+
+    if user_height <= i  || i < 0{
+        return Err(Error::from_str(StatusCode::Ok, "the user number is invalid"))
+    }
+
+    if user_height <= j  || j < 0{
+        return Err(Error::from_str(StatusCode::Ok, "the user number is invalid"))
+    }
+
+    if nonce >= tx.nonce{
+        return Err(Error::from_str(StatusCode::Ok, "the user nonce is invalid"))
+    }
+
+    let balance = req.state().lock().await.balances[i as usize];
+    let tx = Transaction::<E>{
+        tx_type: 1 as u8,
+        full_pubkey: full_pubkey,
+        i: i,
+        value: tx.value,
+        j: j,
+        j_updatekey: j_updatekey,
+        nonce:tx.nonce,
+        proof: proof,
+        balance: balance,  // 处理注册之前存的钱
+    };
+    
+    if req.state().lock().await.try_insert_tx(tx) {
+        Ok("0x".to_owned())
+    } else {
+        Ok("Invalid Tx".to_owned())
+    }
+}
+
+
+
+pub struct RegisterRequest {
+    pub pubkey: String,
+}
+
+async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -> Result<String, Error> {
+    let reg: RegisterRequest = req.body_json().await?;
+    // println!("Recv tx: {:?}", tx.hash());
+
+    let user_height = req.state().lock().await.next_user;
+    let commit = req.state().lock().await.commit;
+    let n = req.state().lock().await.size;
+
+    let update_keys = req.state().lock().await.params.proving_key.update_keys[user_height as usize];
+    let new_full_pubkey = FullPubKey::<E>{
+        i: user_height,
+        updateKey: update_keys,
+        traditionPubKey: reg.pubkey, 
+    };
+    req.state().lock().await.tmp_user_height_increment();
+
+    let proof = req.state().lock().await.proofs[user_height as usize];
+    let addr = calcuAddr(new_full_pubkey)?;
+   
+    let tx = Transaction::<E>{
+        tx_type: 2 as u8,
+        full_pubkey: new_full_pubkey,
+        i: user_height,
+        value: (addr * 10^20) as u32,
+        j: 0,
+        j_updatekey: update_keys,
+        nonce: 0,
+        proof: proof,
+        balance: 0,  // 处理注册之前存的钱
+    };
 
     if req.state().lock().await.try_insert_tx(tx) {
         Ok("0x".to_owned())
@@ -70,11 +160,28 @@ async fn send_tx(mut req: Request<Arc<Mutex<Storage>>>) -> Result<String, Error>
     }
 }
 
+fn calcuAddr<E: PairingEngine>(full_pubkey: FullPubKey::<E>) ->  Result<u64, Error>{
+
+    todo!()
+}
+
 /// withdraw api.
 
 fn main() {
+
+    let size = 1024;
+    let init_result = initialize_asvc::<Bn_256>(size);
+    let (params, commit, proofs) = match init_result {
+        Ok(result) => result,
+        Err(error) => {
+            panic!("Problem initializing asvc: {:?}", error)
+        },
+    };
+
+    // TODO: submit to contract
+    
     // mock storage
-    let storage = Storage::init();
+    let storage = Storage::<Bn_256>::init(params, commit, proofs);
     let s = Arc::new(Mutex::new(storage));
 
     // Running Tasks.
@@ -87,6 +194,7 @@ fn main() {
     app.at("/").get(|_| async { Ok("Asvc Rollup is running!") });
 
     app.at("/send_tx").post(send_tx);
+    app.at("/register").post(register);
 
     task::block_on(app.listen("127.0.0.1:8001")).unwrap();
 }
