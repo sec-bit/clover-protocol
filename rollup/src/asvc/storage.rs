@@ -89,6 +89,8 @@ impl <E: PairingEngine> Storage<E> {
         let removes = Vec::<TxHash>::new();
         let txs = Vec::<Transaction::<E>>::new();
 
+        let counter_changes = E::Fr::from_repr((2u64.pow(20)).into());
+
         for (tx_hash, tx) in self.pools {
             match tx.tx_type {
                 1 => { // transfer
@@ -101,7 +103,7 @@ impl <E: PairingEngine> Storage<E> {
                         if tx.value < new_balance {
                             continue
                         }
-                        changes.insert(tx.i, (balance, nonce, value, new_balance - tx.value, new_nonce + 1, value.sub(&cvalue)));
+                        changes.insert(tx.i, (balance, nonce, value, new_balance - tx.value, new_nonce + 1, value.sub(&cvalue).add(&counter_changes)));
                     } else {
                         let proof = self.proofs[tx.i as usize];
                         let balance = self.balances[tx.i as usize];
@@ -126,7 +128,7 @@ impl <E: PairingEngine> Storage<E> {
                                continue
                             },
                         };
-                        changes.insert(tx.i, (balance, nonce, value, balance - tx.value, nonce + 1, value.sub(&cvalue)));
+                        changes.insert(tx.i, (balance, nonce, value, balance - tx.value, nonce + 1, value.sub(&cvalue).add(&counter_changes)));
                     }
                     tx.proof = self.proofs[tx.i as usize];
 
@@ -140,7 +142,7 @@ impl <E: PairingEngine> Storage<E> {
                         
                         changes.insert(tx.j, (balance, nonce, value, balance + tx.value, nonce,  value.add(&cvalue)));
                     }
-                    let result = update_commit::<E>(&new_commit, cvalue.neg(), tx.i, &self.params.proving_key.update_keys[tx.i as usize],omega, n as usize);
+                    let result = update_commit::<E>(&new_commit, cvalue.neg().add(&counter_changes), tx.i, &self.params.proving_key.update_keys[tx.i as usize],omega, n as usize);
                     new_commit = match result {
                         Ok(result) => result,
                     };
@@ -157,11 +159,11 @@ impl <E: PairingEngine> Storage<E> {
                         if user_height != tx.j {
                             continue
                         }
-                        value = E::Fr::from_repr((tx.value as u64).into());
-                        changes.insert(tx.i, (0, 0, E::Fr::zero(), 0, 1,  value));
+                        value = tx.addr;
+                        changes.insert(tx.i, (0, 0, E::Fr::zero(), 0, 1,  value.add(&counter_changes)));
                         user_height = user_height + 1;
                     }
-                    let result = update_commit::<E>(&new_commit, value, tx.i, &self.params.proving_key.update_keys[tx.j as usize],omega, n as usize);
+                    let result = update_commit::<E>(&new_commit, value.add(&counter_changes), tx.i, &self.params.proving_key.update_keys[tx.j as usize],omega, n as usize);
                     new_commit = match result {
                         Ok(result) => result,
                     };

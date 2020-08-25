@@ -26,6 +26,7 @@ pub struct Transaction<E: PairingEngine> {
     pub nonce: u32,
     pub proof: Proof<E>,
     pub balance: u32,
+    pub addr: E::Fr,
 }
 
 impl <E: PairingEngine> Default for Transaction<E> {

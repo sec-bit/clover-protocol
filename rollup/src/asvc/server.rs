@@ -5,8 +5,10 @@ use async_std::{
 use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
-use ckb_zkp::math::PairingEngine;
-use ckb_zkp::curve:: bn_256::Bn_256;
+use ckb_zkp::math::{PairingEngine,  Zero};
+use ckb_zkp::curve::bn_256::Bn_256;
+use ckb_zkp::curve::PrimeField;
+use core::ops::Mul;
 
 mod account;
 mod block;
@@ -105,6 +107,7 @@ async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -
         nonce:tx.nonce,
         proof: proof,
         balance: balance,  //TODO: 处理注册之前存的钱
+        addr: E::Fr::zero(),
     };
     
     if req.state().lock().await.try_insert_tx(tx) {
@@ -143,12 +146,13 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
         tx_type: 2 as u8,
         full_pubkey: new_full_pubkey,
         i: user_height,
-        value: (addr * 10^20) as u32,
+        value: 0,
         j: 0,
         j_updatekey: update_keys,
         nonce: 0,
         proof: proof,
         balance: 0,  //TODO: 处理注册之前存的钱
+        addr: addr.mul(&E::Fr::from_repr((2u64.pow(35)).into()))
     };
 
     if req.state().lock().await.try_insert_tx(tx) {
@@ -158,8 +162,8 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
     }
 }
 
-fn calcuAddr<E: PairingEngine>(full_pubkey: FullPubKey::<E>) ->  Result<u64, Error>{
-
+fn calcuAddr<E: PairingEngine>(full_pubkey: FullPubKey::<E>) ->  Result<E::Fr, Error>{
+    // mimc
     todo!()
 }
 
