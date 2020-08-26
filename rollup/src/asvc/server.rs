@@ -18,7 +18,7 @@ mod transaction;
 
 use asvc::initialize_asvc;
 use storage::Storage;
-use transaction::{FullPubKey, Transaction};
+use transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -77,7 +77,10 @@ async fn register<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: RegisterRequest = req.body_json().await?;
-    let (pubkey, psk) = (params.pubkey, params.psk);
+    let (pubkey, psk) = (
+        PublicKey::from_hex(&params.pubkey).unwrap(),
+        SecretKey::from_hex(&params.psk).unwrap(),
+    );
 
     let (account, upk) = req.state().lock().await.new_next_user();
     let proof = req.state().lock().await.user_proof(account).clone();
@@ -99,6 +102,7 @@ async fn register<E: PairingEngine>(
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct DepositRequest {
     pub to: u32,
     pub amount: u128,
@@ -110,7 +114,11 @@ async fn deposit<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: DepositRequest = req.body_json().await?;
-    let (to, amount, psk) = (params.to, params.amount, params.psk);
+    let (to, amount, psk) = (
+        params.to,
+        params.amount,
+        SecretKey::from_hex(&params.psk).unwrap(),
+    );
 
     Ok("TODO".to_owned())
 }
@@ -127,7 +135,11 @@ async fn withdraw<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: WithdrawRequest = req.body_json().await?;
-    let (from, amount, psk) = (params.from, params.amount, params.psk);
+    let (from, amount, psk) = (
+        params.from,
+        params.amount,
+        SecretKey::from_hex(&params.psk).unwrap(),
+    );
 
     // send tx to ckb
     Ok("TODO".to_owned())
@@ -146,7 +158,12 @@ async fn transfer<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: TransferRequest = req.body_json().await?;
-    let (from, to, amount, psk) = (params.from, params.to, params.amount, params.psk);
+    let (from, to, amount, psk) = (
+        params.from,
+        params.to,
+        params.amount,
+        SecretKey::from_hex(&params.psk).unwrap(),
+    );
 
     println!(
         "Recv transfer tx: from {}, to {}, amount {}",
@@ -187,9 +204,7 @@ async fn transfer<E: PairingEngine>(
 }
 
 fn main() {
-    let size = 1024;
-
-    let (params, commit, proofs) = match initialize_asvc::<Bn_256>(size) {
+    let (params, commit, proofs) = match initialize_asvc::<Bn_256>(ACCOUNT_SIZE) {
         Ok(result) => result,
         Err(error) => panic!("Problem initializing asvc: {:?}", error),
     };

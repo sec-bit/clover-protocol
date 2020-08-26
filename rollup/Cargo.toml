@@ -27,3 +27,4 @@ async-std = { version = "1", features = ["attributes"] }
 surf = "1"
 rand = { version = "0.7" }
 num-bigint = "0.2.2"
+hex = "0.4"

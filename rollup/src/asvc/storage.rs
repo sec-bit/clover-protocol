@@ -8,7 +8,7 @@ use std::ops::{Add, Neg, Sub};
 
 use super::asvc::update_proofs;
 use super::block::Block;
-use super::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType};
+use super::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType, ACCOUNT_SIZE};
 
 pub struct Storage<E: PairingEngine> {
     pub block_height: u32,
@@ -18,7 +18,6 @@ pub struct Storage<E: PairingEngine> {
     /// const params
     pub omega: E::Fr,
     pub params: Parameters<E>,
-    pub size: u32,
 
     /// all accounts current proof.
     pub commit: Commitment<E>,
@@ -38,9 +37,7 @@ pub struct Storage<E: PairingEngine> {
 
 impl<E: PairingEngine> Storage<E> {
     pub fn init(params: Parameters<E>, commit: Commitment<E>, proofs: Vec<Proof<E>>) -> Self {
-        let size: usize = 1024;
-
-        let domain = EvaluationDomain::<E::Fr>::new(size)
+        let domain = EvaluationDomain::<E::Fr>::new(ACCOUNT_SIZE)
             .ok_or(SynthesisError::PolynomialDegreeTooLarge)
             .unwrap();
 
@@ -52,13 +49,12 @@ impl<E: PairingEngine> Storage<E> {
             proofs: proofs,
             params: params,
             commit: commit,
-            size: size as u32,
             next_user: 0u32,
             tmp_next_user: 0u32,
-            balances: vec![0u128; size],
-            tmp_balances: vec![0u128; size],
-            nonces: vec![0u32; size],
-            tmp_nonces: vec![0u32; size],
+            balances: vec![0u128; ACCOUNT_SIZE],
+            tmp_balances: vec![0u128; ACCOUNT_SIZE],
+            nonces: vec![0u32; ACCOUNT_SIZE],
+            tmp_nonces: vec![0u32; ACCOUNT_SIZE],
             full_pubkeys: vec![],
         }
     }
@@ -114,11 +110,11 @@ impl<E: PairingEngine> Storage<E> {
                     self.tmp_next_user += 1;
                     self.tmp_nonces[account as usize] = 1; // account first tx is register.
                 }
-                TxType::Deposit(to, amount) => {
+                TxType::Deposit(_to, _amount) => {
                     // not handle deposit
                     return false;
                 }
-                TxType::Withdraw(from, amount) => {
+                TxType::Withdraw(_from, _amount) => {
                     // not handle withdraw
                     return false;
                 }
@@ -135,7 +131,7 @@ impl<E: PairingEngine> Storage<E> {
         let block_height = self.block_height;
         let mut user_height = self.next_user;
 
-        let n = self.size as usize;
+        let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
         let mut new_commit = self.commit.clone();
@@ -218,7 +214,7 @@ impl<E: PairingEngine> Storage<E> {
 
     /// handle when the block commit to L1.
     pub fn handle_block(&mut self, block: Block<E>) {
-        let n = self.size;
+        let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
         self.block_height = block.block_height;
@@ -278,7 +274,8 @@ impl<E: PairingEngine> Storage<E> {
             &mut self.proofs,
             &cvalues,
             n as usize,
-        );
+        )
+        .unwrap();
 
         self.next_user = self.tmp_next_user.clone();
         self.balances = self.tmp_balances.clone();
@@ -295,7 +292,7 @@ impl<E: PairingEngine> Storage<E> {
     /// update local data from L1 for withdrawing and depositing
     pub fn update_block(&mut self, block: Block<E>) {
         let mut new_commit = self.commit.clone();
-        let n = self.size;
+        let n = ACCOUNT_SIZE;
         let omega = self.omega;
         let mut cvalues = HashMap::<u32, E::Fr>::new();
 
@@ -352,7 +349,8 @@ impl<E: PairingEngine> Storage<E> {
             &mut self.proofs,
             &cvalues,
             n as usize,
-        );
+        )
+        .unwrap();
 
         self.block_height = block.block_height;
         self.commit = new_commit;

@@ -1027,7 +1027,7 @@ checksum = "3ce774f97919ed2458881e02ddf431ae82bc6203fbae8d75563b4499126c0ad2"
 [[package]]
 name = "ckb-zkp"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d07d3b25371f2610420850d7650770837e8c7aae"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
 dependencies = [
  "byteorder",
  "curve",
@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "curve"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d07d3b25371f2610420850d7650770837e8c7aae"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
 dependencies = [
  "math",
 ]
@@ -1890,6 +1890,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
+
+[[package]]
 name = "hkdf"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2344,7 +2350,7 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "math"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d07d3b25371f2610420850d7650770837e8c7aae"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
 dependencies = [
  "derivative",
  "math-derive",
@@ -2357,7 +2363,7 @@ dependencies = [
 [[package]]
 name = "math-derive"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d07d3b25371f2610420850d7650770837e8c7aae"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
@@ -3282,6 +3288,7 @@ dependencies = [
  "async-std",
  "ckb-tool",
  "ckb-zkp",
+ "hex",
  "num-bigint",
  "rand 0.7.3",
  "serde",
@@ -3339,7 +3346,7 @@ dependencies = [
 [[package]]
 name = "scheme"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d07d3b25371f2610420850d7650770837e8c7aae"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
 dependencies = [
  "curve",
  "digest 0.8.1",

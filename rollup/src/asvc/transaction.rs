@@ -3,8 +3,34 @@ use ckb_zkp::math::{io, serialize::*, BigInteger, FromBytes, PairingEngine, Prim
 
 use ckb_zkp::scheme::asvc::{Proof, UpdateKey};
 
+pub const ACCOUNT_SIZE: usize = 16;
+
 pub type TxHash = Vec<u8>;
-pub type Amount = u64;
+
+#[derive(Clone)]
+pub struct PublicKey(pub Vec<u8>);
+
+pub struct SecretKey(pub Vec<u8>);
+
+impl PublicKey {
+    pub fn from_hex(s: &str) -> Result<Self, ()> {
+        hex::decode(s).map(|v| PublicKey(v)).map_err(|_| ())
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+impl SecretKey {
+    pub fn from_hex(s: &str) -> Result<Self, ()> {
+        hex::decode(s).map(|v| SecretKey(v)).map_err(|_| ())
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
 
 #[derive(Clone)]
 pub struct FullPubKey<E: PairingEngine> {
@@ -13,7 +39,7 @@ pub struct FullPubKey<E: PairingEngine> {
     /// user update proof's key.
     pub update_key: UpdateKey<E>,
     /// rollup defined kepair.
-    pub tradition_pubkey: String,
+    pub tradition_pubkey: PublicKey,
 }
 
 impl<E: PairingEngine> FullPubKey<E> {
@@ -22,9 +48,7 @@ impl<E: PairingEngine> FullPubKey<E> {
         self.i.write(&mut bytes).unwrap();
         self.update_key.ai.write(&mut bytes).unwrap();
         self.update_key.ui.write(&mut bytes).unwrap();
-        for key in self.traditionPubKey.iter() {
-            key.write(&mut bytes).unwrap();
-        }
+        self.tradition_pubkey.0.write(&mut bytes).unwrap();
 
         mimc::hash(&bytes)
     }
@@ -39,7 +63,7 @@ pub enum TxType<E: PairingEngine> {
     /// from_account, to_account, amount, to's update_key
     Transfer(u32, u32, u128, UpdateKey<E>),
     /// registe a account.
-    Register(u32, String),
+    Register(u32, PublicKey),
 }
 
 impl<E: PairingEngine> TxType<E> {
@@ -75,7 +99,7 @@ impl<E: PairingEngine> TxType<E> {
         TxType::Withdraw(from, amount)
     }
 
-    pub fn new_register(account: u32, pubkey: String) -> Self {
+    pub fn new_register(account: u32, pubkey: PublicKey) -> Self {
         TxType::Register(account, pubkey)
     }
 }
@@ -93,7 +117,7 @@ pub struct Transaction<E: PairingEngine> {
     /// from_account's balance.
     pub balance: u128,
     /// sender's pubkey.
-    pub pubkey: String,
+    pub pubkey: PublicKey,
     /// sender's sign.
     pub sign: Vec<u8>,
 }
@@ -111,7 +135,7 @@ impl<E: PairingEngine> Transaction<E> {
         nonce: u32,
         balance: u128,
         proof: Proof<E>,
-        psk: &String,
+        sk: &SecretKey,
     ) -> Self {
         let mut tx = Self {
             tx_type,
@@ -122,7 +146,7 @@ impl<E: PairingEngine> Transaction<E> {
             pubkey: fpk.tradition_pubkey,
             sign: Vec::new(),
         };
-        tx.sign(psk);
+        tx.sign(sk);
 
         tx
     }
@@ -154,10 +178,10 @@ impl<E: PairingEngine> Transaction<E> {
         nonce: u32,
         balance: u128,
         proof: Proof<E>,
-        psk: &String,
+        sk: &SecretKey,
     ) -> Self {
         let tx_type = TxType::new_transfer(from, to, amount, to_upk);
-        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+        Self::new(tx_type, fpk, nonce, balance, proof, sk)
     }
 
     pub fn new_deposit(
@@ -167,10 +191,10 @@ impl<E: PairingEngine> Transaction<E> {
         nonce: u32,
         balance: u128,
         proof: Proof<E>,
-        psk: &String,
+        sk: &SecretKey,
     ) -> Self {
         let tx_type = TxType::new_deposit(to, amount);
-        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+        Self::new(tx_type, fpk, nonce, balance, proof, sk)
     }
 
     pub fn new_withdraw(
@@ -180,23 +204,23 @@ impl<E: PairingEngine> Transaction<E> {
         nonce: u32,
         balance: u128,
         proof: Proof<E>,
-        psk: &String,
+        sk: &SecretKey,
     ) -> Self {
         let tx_type = TxType::new_withdraw(from, amount);
-        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+        Self::new(tx_type, fpk, nonce, balance, proof, sk)
     }
 
     pub fn new_register(
         account: u32,
-        pubkey: String,
+        pubkey: PublicKey,
         fpk: FullPubKey<E>,
         nonce: u32,
         balance: u128,
         proof: Proof<E>,
-        psk: &String,
+        sk: &SecretKey,
     ) -> Self {
         let tx_type = TxType::new_register(account, pubkey);
-        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+        Self::new(tx_type, fpk, nonce, balance, proof, sk)
     }
 
     /// verify sign
@@ -204,7 +228,7 @@ impl<E: PairingEngine> Transaction<E> {
         true
     }
 
-    pub fn sign(&mut self, psk: &String) {
+    pub fn sign(&mut self, sk: &SecretKey) {
         // TODO
     }
 }
