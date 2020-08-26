@@ -7,9 +7,19 @@ use ckb_zkp::scheme::r1cs::SynthesisError;
 use rand::thread_rng;
 use std::collections::HashMap;
 
+use super::transaction::{FullPubKey, Transaction};
+
 pub fn initialize_asvc<E>(
     n: usize,
-) -> Result<(Parameters<E>, Commitment<E>, Vec<Proof<E>>), SynthesisError>
+) -> Result<
+    (
+        Parameters<E>,
+        Commitment<E>,
+        Vec<Proof<E>>,
+        Vec<FullPubKey<E>>,
+    ),
+    SynthesisError,
+>
 where
     E: PairingEngine,
 {
@@ -26,16 +36,28 @@ where
     let commit = commit::<E>(&params.proving_key, values)?;
     println!("initialize commit...ok");
 
+    let mut full_pubkeys = vec![];
+    for i in 0..n {
+        full_pubkeys.push(FullPubKey::default(
+            i as u32,
+            params.proving_key.update_keys[i].clone(),
+        ));
+    }
+
     println!("start to initialize proofs...");
     let mut proofs = Vec::new();
     for i in 0..n {
-        let proof = prove_pos::<E>(&params.proving_key, vec![E::Fr::zero()], vec![i as u32])?;
+        let proof = prove_pos::<E>(
+            &params.proving_key,
+            vec![Transaction::static_proof_param(&full_pubkeys[i], 0, 0)],
+            vec![i as u32],
+        )?;
         proofs.push(proof);
     }
 
     println!("initialize proofs...ok");
 
-    Ok((params, commit, proofs))
+    Ok((params, commit, proofs, full_pubkeys))
 }
 
 pub fn update_proofs<E>(

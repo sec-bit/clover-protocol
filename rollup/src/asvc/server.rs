@@ -88,9 +88,9 @@ async fn register<E: PairingEngine>(
         PublicKey::from_hex(&params.pubkey).unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
-    println!("debug: {:?}", params);
 
     let (account, upk) = req.state().lock().await.new_next_user();
+    println!("new next user: {}", account);
     let proof = req.state().lock().await.user_proof(account).clone();
 
     let fpk = FullPubKey::<E> {
@@ -212,7 +212,7 @@ async fn transfer<E: PairingEngine>(
 }
 
 fn main() {
-    let (params, commit, proofs) = match initialize_asvc::<Bn_256>(ACCOUNT_SIZE) {
+    let (params, commit, proofs, full_pubkeys) = match initialize_asvc::<Bn_256>(ACCOUNT_SIZE) {
         Ok(result) => result,
         Err(error) => panic!("Problem initializing asvc: {:?}", error),
     };
@@ -220,7 +220,7 @@ fn main() {
     // TODO: submit to contract
 
     // mock storage
-    let storage = Storage::<Bn_256>::init(params, commit, proofs);
+    let storage = Storage::<Bn_256>::init(params, commit, proofs, full_pubkeys);
     let s = Arc::new(Mutex::new(storage));
 
     // Running Tasks.

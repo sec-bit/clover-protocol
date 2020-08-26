@@ -1,5 +1,5 @@
 use ckb_zkp::gadgets::mimc;
-use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes};
+use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes, Zero};
 use ckb_zkp::scheme::asvc::{
     prove_pos, update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey,
 };
@@ -37,7 +37,12 @@ pub struct Storage<E: PairingEngine> {
 }
 
 impl<E: PairingEngine> Storage<E> {
-    pub fn init(params: Parameters<E>, commit: Commitment<E>, proofs: Vec<Proof<E>>) -> Self {
+    pub fn init(
+        params: Parameters<E>,
+        commit: Commitment<E>,
+        proofs: Vec<Proof<E>>,
+        full_pubkeys: Vec<FullPubKey<E>>,
+    ) -> Self {
         let domain = EvaluationDomain::<E::Fr>::new(ACCOUNT_SIZE)
             .ok_or(SynthesisError::PolynomialDegreeTooLarge)
             .unwrap();
@@ -56,7 +61,7 @@ impl<E: PairingEngine> Storage<E> {
             tmp_balances: vec![0u128; ACCOUNT_SIZE],
             nonces: vec![0u32; ACCOUNT_SIZE],
             tmp_nonces: vec![0u32; ACCOUNT_SIZE],
-            full_pubkeys: vec![],
+            full_pubkeys: full_pubkeys,
         }
     }
 
@@ -140,8 +145,16 @@ impl<E: PairingEngine> Storage<E> {
         let mut new_commit = self.commit.clone();
 
         let mut txs = Vec::<Transaction<E>>::new();
-        let mut proof_params = vec![];
+        let mut proof_params = vec![E::Fr::zero(); n];
         let mut froms = vec![];
+
+        // for i in 0..n {
+        //     proof_params[i] = Transaction::<E>::static_proof_param(
+        //         &self.full_pubkeys[i],
+        //         self.nonces[i],
+        //         self.balances[i],
+        //     );
+        // }
 
         //let nonce_offest_fr = E::Fr::one() >> 128;
         let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
@@ -210,7 +223,7 @@ impl<E: PairingEngine> Storage<E> {
             }
 
             froms.push(tx.from());
-            proof_params.push(tx.proof_param());
+            proof_params[tx.from() as usize] = tx.proof_param();
 
             txs.push(tx);
         }

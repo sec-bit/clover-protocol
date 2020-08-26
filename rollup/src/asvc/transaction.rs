@@ -43,6 +43,14 @@ pub struct FullPubKey<E: PairingEngine> {
 }
 
 impl<E: PairingEngine> FullPubKey<E> {
+    pub fn default(i: u32, upk: UpdateKey<E>) -> Self {
+        Self {
+            i,
+            update_key: upk,
+            tradition_pubkey: PublicKey(vec![]),
+        }
+    }
+
     pub fn addr(&self) -> E::Fr {
         let mut bytes = vec![];
         self.i.write(&mut bytes).unwrap();
@@ -160,8 +168,29 @@ impl<E: PairingEngine> Transaction<E> {
         mimc::hash(&bytes)
     }
 
+    pub fn static_proof_param(fpk: &FullPubKey<E>, nonce: u32, balance: u128) -> E::Fr {
+        let mut bytes = Vec::new();
+        fpk.addr().write(&mut bytes).unwrap();
+        nonce.write(&mut bytes).unwrap();
+        balance.to_le_bytes().write(&mut bytes).unwrap();
+
+        mimc::hash(&bytes)
+    }
+
     pub fn hash(&self) -> TxHash {
-        vec![]
+        let mut bytes = Vec::new();
+
+        // mock
+        self.from().write(&mut bytes).unwrap();
+        self.addr.write(&mut bytes).unwrap();
+        self.nonce.write(&mut bytes).unwrap();
+        let fr: E::Fr = mimc::hash(&bytes);
+
+        let mut new_bytes = Vec::new();
+
+        fr.write(&mut new_bytes).unwrap();
+
+        new_bytes
     }
 
     pub fn from(&self) -> u32 {
@@ -174,7 +203,7 @@ impl<E: PairingEngine> Transaction<E> {
     }
 
     pub fn id(&self) -> String {
-        "0x000000".to_owned()
+        hex::encode(self.hash())
     }
 
     /// new transfer transaction.
