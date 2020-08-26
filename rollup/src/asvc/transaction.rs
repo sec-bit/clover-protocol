@@ -13,18 +13,19 @@ pub type Amount = u64;
 pub struct FullPubKey<E: PairingEngine> {
     pub i: u32,
     pub updateKey: UpdateKey<E>,
-    pub traditionPubKey: String,
+    pub traditionPubKey: Vec<u8>,
 }
 
 impl<E: PairingEngine> FullPubKey<E> {
     pub fn hash(&self) -> E::Fr {
         let mut bytes = vec![];
         self.i.write(&mut bytes).unwrap();
+        self.updateKey.ai.write(&mut bytes).unwrap();
+        self.updateKey.ui.write(&mut bytes).unwrap();
 
-        //todo!();
-        //self.updateKey.write(&mut bytes).unwrap();
-        //self.traditionPubKey.write(&mut bytes).unwrap();
-
+        for key in self.traditionPubKey.iter(){
+            key.write(&mut bytes).unwrap();
+        }
         mimc::hash(&bytes)
     }
 }

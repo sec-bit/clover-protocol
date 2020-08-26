@@ -137,7 +137,7 @@ async fn send_tx<E: PairingEngine>(
 
 #[derive(Serialize, Deserialize)]
 pub struct RegisterRequest {
-    pub pubkey: String,
+    pub pubkey: Vec<u8>,
 }
 
 async fn register<E: PairingEngine>(
@@ -155,7 +155,7 @@ async fn register<E: PairingEngine>(
     let new_full_pubkey = FullPubKey::<E> {
         i: user_height,
         updateKey: update_keys.clone(),
-        traditionPubKey: reg.pubkey,
+        traditionPubKey: reg.pubkey.clone(),
     };
     req.state().lock().await.tmp_user_height_increment();
 
