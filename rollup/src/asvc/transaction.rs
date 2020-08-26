@@ -1,47 +1,101 @@
 use ckb_zkp::gadgets::mimc;
-use ckb_zkp::math::PairingEngine;
-use ckb_zkp::math::ToBytes;
-use ckb_zkp::scheme::asvc::{Proof, UpdateKey};
-use serde::{Deserialize, Serialize};
+use ckb_zkp::math::{io, serialize::*, BigInteger, FromBytes, PairingEngine, PrimeField, ToBytes};
 
-use super::account::Account;
+use ckb_zkp::scheme::asvc::{Proof, UpdateKey};
 
 pub type TxHash = Vec<u8>;
 pub type Amount = u64;
 
 #[derive(Clone)]
 pub struct FullPubKey<E: PairingEngine> {
+    /// user_account_number.
     pub i: u32,
-    pub updateKey: UpdateKey<E>,
-    pub traditionPubKey: Vec<u8>,
+    /// user update proof's key.
+    pub update_key: UpdateKey<E>,
+    /// rollup defined kepair.
+    pub tradition_pubkey: String,
 }
 
 impl<E: PairingEngine> FullPubKey<E> {
-    pub fn hash(&self) -> E::Fr {
+    pub fn addr(&self) -> E::Fr {
         let mut bytes = vec![];
         self.i.write(&mut bytes).unwrap();
-        self.updateKey.ai.write(&mut bytes).unwrap();
-        self.updateKey.ui.write(&mut bytes).unwrap();
-
-        for key in self.traditionPubKey.iter(){
+        self.update_key.ai.write(&mut bytes).unwrap();
+        self.update_key.ui.write(&mut bytes).unwrap();
+        for key in self.traditionPubKey.iter() {
             key.write(&mut bytes).unwrap();
         }
+
         mimc::hash(&bytes)
     }
 }
 
 #[derive(Clone)]
+pub enum TxType<E: PairingEngine> {
+    /// to_account, amount.
+    Deposit(u32, u128),
+    /// from_account, amount.
+    Withdraw(u32, u128),
+    /// from_account, to_account, amount, to's update_key
+    Transfer(u32, u32, u128, UpdateKey<E>),
+    /// registe a account.
+    Register(u32, String),
+}
+
+impl<E: PairingEngine> TxType<E> {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        // match self {
+        //     TxType::Deposit(..) => 1u8,
+        //     TxType::Withdraw(..) => 2u8,
+        //     TxType::Transfer(..) => 3u8,
+        //     TxType::Register(..) => 4u8,
+        // }
+        todo!()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+        // match u {
+        //     1u8 => Ok(TxType::Deposit),
+        //     2u8 => Ok(TxType::Withdraw),
+        //     3u8 => Ok(TxType::Transfer),
+        //     _ => Err(()),
+        // }
+        todo!()
+    }
+
+    pub fn new_transfer(from: u32, to: u32, amount: u128, to_upk: UpdateKey<E>) -> Self {
+        TxType::Transfer(from, to, amount, to_upk)
+    }
+
+    pub fn new_deposit(to: u32, amount: u128) -> Self {
+        TxType::Deposit(to, amount)
+    }
+
+    pub fn new_withdraw(from: u32, amount: u128) -> Self {
+        TxType::Withdraw(from, amount)
+    }
+
+    pub fn new_register(account: u32, pubkey: String) -> Self {
+        TxType::Register(account, pubkey)
+    }
+}
+
+#[derive(Clone)]
 pub struct Transaction<E: PairingEngine> {
-    pub tx_type: u8,
-    pub full_pubkey: FullPubKey<E>,
-    pub i: u32,
-    pub j: u32,
-    pub j_updatekey: UpdateKey<E>,
-    pub value: u32,
-    pub nonce: u32,
+    /// transaction type. include
+    pub tx_type: TxType<E>,
+    /// ownership proof.
     pub proof: Proof<E>,
-    pub balance: u32,
+    /// account's hash.
     pub addr: E::Fr,
+    /// tx's nonce
+    pub nonce: u32,
+    /// from_account's balance.
+    pub balance: u128,
+    /// sender's pubkey.
+    pub pubkey: String,
+    /// sender's sign.
+    pub sign: Vec<u8>,
 }
 
 impl<E: PairingEngine> Default for Transaction<E> {
@@ -51,45 +105,110 @@ impl<E: PairingEngine> Default for Transaction<E> {
 }
 
 impl<E: PairingEngine> Transaction<E> {
+    fn new(
+        tx_type: TxType<E>,
+        fpk: FullPubKey<E>,
+        nonce: u32,
+        balance: u128,
+        proof: Proof<E>,
+        psk: &String,
+    ) -> Self {
+        let mut tx = Self {
+            tx_type,
+            proof,
+            nonce,
+            balance,
+            addr: fpk.addr(),
+            pubkey: fpk.tradition_pubkey,
+            sign: Vec::new(),
+        };
+        tx.sign(psk);
+
+        tx
+    }
+
+    pub fn proof_param(&self) -> E::Fr {
+        let mut bytes = Vec::new();
+        self.addr.write(&mut bytes).unwrap();
+        self.nonce.write(&mut bytes).unwrap();
+        self.balance.to_le_bytes().write(&mut bytes).unwrap();
+
+        mimc::hash(&bytes)
+    }
+
     pub fn hash(&self) -> TxHash {
         vec![]
     }
 
-    pub fn hash_string(&self) -> String {
+    pub fn id(&self) -> String {
         "0x000000".to_owned()
     }
 
     /// new transfer transaction.
-    pub fn transfer(_from: Account, _to: Account, _amount: Amount) -> Self {
-        todo!()
+    pub fn new_transfer(
+        from: u32,
+        to: u32,
+        amount: u128,
+        to_upk: UpdateKey<E>,
+        fpk: FullPubKey<E>,
+        nonce: u32,
+        balance: u128,
+        proof: Proof<E>,
+        psk: &String,
+    ) -> Self {
+        let tx_type = TxType::new_transfer(from, to, amount, to_upk);
+        Self::new(tx_type, fpk, nonce, balance, proof, psk)
     }
 
-    /// new deposit transaction.
-    pub fn register() -> Self {
-        todo!()
+    pub fn new_deposit(
+        to: u32,
+        amount: u128,
+        fpk: FullPubKey<E>,
+        nonce: u32,
+        balance: u128,
+        proof: Proof<E>,
+        psk: &String,
+    ) -> Self {
+        let tx_type = TxType::new_deposit(to, amount);
+        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+    }
+
+    pub fn new_withdraw(
+        from: u32,
+        amount: u128,
+        fpk: FullPubKey<E>,
+        nonce: u32,
+        balance: u128,
+        proof: Proof<E>,
+        psk: &String,
+    ) -> Self {
+        let tx_type = TxType::new_withdraw(from, amount);
+        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+    }
+
+    pub fn new_register(
+        account: u32,
+        pubkey: String,
+        fpk: FullPubKey<E>,
+        nonce: u32,
+        balance: u128,
+        proof: Proof<E>,
+        psk: &String,
+    ) -> Self {
+        let tx_type = TxType::new_register(account, pubkey);
+        Self::new(tx_type, fpk, nonce, balance, proof, psk)
+    }
+
+    /// verify sign
+    pub fn verify(&self) -> bool {
+        true
+    }
+
+    pub fn sign(&mut self, psk: &String) {
+        // TODO
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct RawTransaction {
-    pub tx_type: u8,
-    pub full_pubkey: String,
-    pub i: u32,
-    pub j: u32,
-    pub j_updatekey: String,
-    pub value: u32,
-    pub nonce: u32,
-    pub proof: String,
-    pub balance: u32,
-    pub addr: String,
-}
-
-impl RawTransaction {
-    pub fn to_tx<E: PairingEngine>(&self) -> Result<Transaction<E>, ()> {
-        todo!()
-    }
-
-    pub fn from_tx<E: PairingEngine>(tx: &Transaction<E>) -> Result<RawTransaction, ()> {
-        todo!()
-    }
+pub fn u128_to_fr<E: PairingEngine>(u: u128) -> E::Fr {
+    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(u))
 }

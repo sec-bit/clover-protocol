@@ -11,7 +11,6 @@ use ckb_zkp::math::{PairingEngine, Zero};
 use core::ops::Mul;
 use serde::{Deserialize, Serialize};
 
-mod account;
 mod asvc;
 mod block;
 mod storage;
@@ -19,7 +18,7 @@ mod transaction;
 
 use asvc::initialize_asvc;
 use storage::Storage;
-use transaction::{FullPubKey, RawTransaction, Transaction};
+use transaction::{FullPubKey, Transaction};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -68,126 +67,129 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
     }
 }
 
-/// send transaction api.
-async fn send_tx<E: PairingEngine>(
-    mut req: Request<Arc<Mutex<Storage<E>>>>,
-) -> Result<String, Error> {
-    let raw_tx: RawTransaction = req.body_json().await?;
-    let mut tx = raw_tx
-        .to_tx::<E>()
-        .map_err(|_| Error::from_str(StatusCode::BadRequest, "Tx Error"))?;
-    println!("Recv tx: {:?}", tx.hash());
-
-    let i = tx.i;
-    let j = tx.j;
-
-    let block_height = req.state().lock().await.block_height;
-    let user_height = req.state().lock().await.next_user;
-    let commit = &req.state().lock().await.commit;
-    let n = req.state().lock().await.size;
-    let full_pubkey = req.state().lock().await.full_pubkeys[i as usize].clone();
-    let j_updatekey = req.state().lock().await.full_pubkeys[j as usize]
-        .updateKey
-        .clone();
-
-    let value = req.state().lock().await.values[i as usize];
-    let nonce = req.state().lock().await.nonces[i as usize];
-    let proof = req.state().lock().await.proofs[i as usize].clone();
-
-    if user_height <= i || i < 0 {
-        return Err(Error::from_str(
-            StatusCode::Ok,
-            "the user number is invalid",
-        ));
-    }
-
-    if user_height <= j || j < 0 {
-        return Err(Error::from_str(
-            StatusCode::Ok,
-            "the user number is invalid",
-        ));
-    }
-
-    if nonce >= tx.nonce {
-        return Err(Error::from_str(StatusCode::Ok, "the user nonce is invalid"));
-    }
-
-    let balance = req.state().lock().await.balances[i as usize];
-    let tx = Transaction::<E> {
-        tx_type: 1 as u8,
-        full_pubkey: full_pubkey,
-        i: i,
-        value: tx.value,
-        j: j,
-        j_updatekey: j_updatekey,
-        nonce: tx.nonce,
-        proof: proof,
-        balance: balance, //TODO: 处理注册之前存的钱
-        addr: E::Fr::zero(),
-    };
-
-    let tx_hash = tx.hash_string();
-
-    if req.state().lock().await.try_insert_tx(tx) {
-        Ok(tx_hash)
-    } else {
-        Ok("Invalid Tx".to_owned())
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct RegisterRequest {
-    pub pubkey: Vec<u8>,
+    pub pubkey: String,
+    pub psk: String,
 }
 
 async fn register<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
-    let reg: RegisterRequest = req.body_json().await?;
-    // println!("Recv tx: {:?}", tx.hash());
+    let params: RegisterRequest = req.body_json().await?;
+    let (pubkey, psk) = (params.pubkey, params.psk);
 
-    let user_height = req.state().lock().await.next_user;
-    let commit = &req.state().lock().await.commit;
-    let n = req.state().lock().await.size;
+    let (account, upk) = req.state().lock().await.new_next_user();
+    let proof = req.state().lock().await.user_proof(account).clone();
 
-    let update_keys =
-        req.state().lock().await.params.proving_key.update_keys[user_height as usize].clone();
-    let new_full_pubkey = FullPubKey::<E> {
-        i: user_height,
-        updateKey: update_keys.clone(),
-        traditionPubKey: reg.pubkey.clone(),
+    let fpk = FullPubKey::<E> {
+        i: account,
+        update_key: upk,
+        tradition_pubkey: pubkey.clone(),
     };
-    req.state().lock().await.tmp_user_height_increment();
 
-    let proof = req.state().lock().await.proofs[user_height as usize].clone();
-    let addr = new_full_pubkey.hash();
+    let tx = Transaction::<E>::new_register(account, pubkey, fpk, 0, 0, proof, &psk);
 
-    let tx = Transaction::<E> {
-        tx_type: 2 as u8,
-        full_pubkey: new_full_pubkey,
-        i: user_height,
-        value: 0,
-        j: 0,
-        j_updatekey: update_keys,
-        nonce: 0,
-        proof: proof,
-        balance: 0, //TODO: 处理注册之前存的钱
-        addr: addr.mul(&E::Fr::from_repr((2u64.pow(50)).into())),
-    };
+    let tx_id = tx.id();
 
     if req.state().lock().await.try_insert_tx(tx) {
-        Ok("0x".to_owned())
+        Ok(tx_id)
     } else {
         Ok("Invalid Tx".to_owned())
     }
 }
 
-/// withdraw api.
+struct DepositRequest {
+    pub to: u32,
+    pub amount: u128,
+    pub psk: String,
+}
+
+/// wallet deposit api. build tx and send to ckb.
+async fn deposit<E: PairingEngine>(
+    mut req: Request<Arc<Mutex<Storage<E>>>>,
+) -> Result<String, Error> {
+    let params: DepositRequest = req.body_json().await?;
+    let (to, amount, psk) = (params.to, params.amount, params.psk);
+
+    Ok("TODO".to_owned())
+}
+
+#[derive(Serialize, Deserialize)]
+struct WithdrawRequest {
+    pub from: u32,
+    pub amount: u128,
+    pub psk: String,
+}
+
+/// wallet withddraw api. build tx and send to ckb.
+async fn withdraw<E: PairingEngine>(
+    mut req: Request<Arc<Mutex<Storage<E>>>>,
+) -> Result<String, Error> {
+    let params: WithdrawRequest = req.body_json().await?;
+    let (from, amount, psk) = (params.from, params.amount, params.psk);
+
+    // send tx to ckb
+    Ok("TODO".to_owned())
+}
+
+#[derive(Serialize, Deserialize)]
+struct TransferRequest {
+    pub from: u32,
+    pub to: u32,
+    pub amount: u128,
+    pub psk: String,
+}
+
+/// wallet transfer api. build tx and send to ckb.
+async fn transfer<E: PairingEngine>(
+    mut req: Request<Arc<Mutex<Storage<E>>>>,
+) -> Result<String, Error> {
+    let params: TransferRequest = req.body_json().await?;
+    let (from, to, amount, psk) = (params.from, params.to, params.amount, params.psk);
+
+    println!(
+        "Recv transfer tx: from {}, to {}, amount {}",
+        from, to, amount
+    );
+
+    if !req.state().lock().await.contains_users(&[from, to]) {
+        return Err(Error::from_str(
+            StatusCode::BadRequest,
+            "the user number is invalid",
+        ));
+    }
+
+    let from_fpk = req.state().lock().await.user_fpk(from);
+    let to_upk = req.state().lock().await.user_fpk(to).update_key;
+    let nonce = req.state().lock().await.new_next_nonce(from);
+    let balance = req.state().lock().await.user_balance(from);
+    let proof = req.state().lock().await.user_proof(from);
+
+    if amount > balance {
+        return Err(Error::from_str(
+            StatusCode::BadRequest,
+            "the user balance not enough",
+        ));
+    }
+
+    let tx = Transaction::<E>::new_transfer(
+        from, to, amount, to_upk, from_fpk, nonce, balance, proof, &psk,
+    );
+
+    let tx_hash_id = tx.id();
+
+    if req.state().lock().await.try_insert_tx(tx) {
+        Ok(tx_hash_id)
+    } else {
+        Ok("Invalid Tx".to_owned())
+    }
+}
 
 fn main() {
     let size = 1024;
-    let init_result = initialize_asvc::<Bn_256>(size);
-    let (params, commit, proofs) = match init_result {
+
+    let (params, commit, proofs) = match initialize_asvc::<Bn_256>(size) {
         Ok(result) => result,
         Err(error) => panic!("Problem initializing asvc: {:?}", error),
     };
@@ -207,7 +209,13 @@ fn main() {
     let mut app = tide::with_state(s);
     app.at("/").get(|_| async { Ok("Asvc Rollup is running!") });
 
-    app.at("/send_tx").post(send_tx);
+    // wallet service
+    app.at("/deposit").post(deposit);
+    app.at("/withdraw").post(withdraw);
+    app.at("/transfer").post(transfer);
+
+    // L2 service
+    //app.at("/send_tx").post(send_tx);
     app.at("/register").post(register);
 
     task::block_on(app.listen("127.0.0.1:8001")).unwrap();
