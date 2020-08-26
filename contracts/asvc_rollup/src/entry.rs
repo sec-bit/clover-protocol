@@ -5,7 +5,7 @@ use ckb_std::{
     ckb_constants::Source,
     debug,
     error::SysError,
-    high_level::{load_cell_data, load_cell_lock_hash},
+    high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash},
 };
 
 use crate::error::Error;
@@ -82,6 +82,8 @@ pub fn main() -> Result<(), Error> {
                 }
                 Err(err) => return Err(err.into()),
             };
+            let pre_amount_lock = load_cell_lock_hash(2, Source::Input)?;
+            let pre_amount_type = load_cell_type_hash(2, Source::Input)?;
 
             // 3. inputs udt deposit.
             let mut deposit_amount: u128 = 0;
@@ -93,6 +95,12 @@ pub fn main() -> Result<(), Error> {
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
                 };
+
+                let udt_type = load_cell_type_hash(i, Source::Input)?;
+
+                if udt_type != pre_amount_type {
+                    continue;
+                }
 
                 if data.len() != UDT_LEN {
                     return Err(Error::Encoding);
@@ -115,13 +123,13 @@ pub fn main() -> Result<(), Error> {
                 }
                 Err(err) => return Err(err.into()),
             };
+            let now_amount_lock = load_cell_lock_hash(2, Source::Output)?;
+            let now_amount_type = load_cell_type_hash(2, Source::Input)?;
 
-            let int_lock = load_cell_lock_hash(2, Source::Input)?;
-            let out_lock = load_cell_lock_hash(2, Source::Output)?;
-            if int_lock != out_lock {
+            if (pre_amount_lock != now_amount_lock) || (pre_amount_type != now_amount_type) {
                 return Err(Error::Amount);
             }
-            if now_com_lock != int_lock {
+            if now_com_lock != pre_amount_lock {
                 return Err(Error::Verify);
             }
 
@@ -135,6 +143,12 @@ pub fn main() -> Result<(), Error> {
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
                 };
+
+                let udt_type = load_cell_type_hash(i, Source::Output)?;
+
+                if udt_type != now_amount_type {
+                    continue;
+                }
 
                 if data.len() != UDT_LEN {
                     return Err(Error::Encoding);
@@ -179,6 +193,8 @@ pub fn main() -> Result<(), Error> {
                 }
                 Err(err) => return Err(err.into()),
             };
+            let pre_amount_lock = load_cell_lock_hash(2, Source::Input)?;
+            let pre_amount_type = load_cell_type_hash(2, Source::Input)?;
 
             // 3. now udt pool amount.
             let now_amount = match load_cell_data(2, Source::Output) {
@@ -193,17 +209,14 @@ pub fn main() -> Result<(), Error> {
                 }
                 Err(err) => return Err(err.into()),
             };
-            let int_lock = load_cell_lock_hash(2, Source::Input)?;
-            let out_lock = load_cell_lock_hash(2, Source::Output)?;
-            if int_lock != out_lock {
+            let now_amount_lock = load_cell_lock_hash(2, Source::Output)?;
+            let now_amount_type = load_cell_type_hash(2, Source::Input)?;
+
+            if (pre_amount_lock != now_amount_lock) || (pre_amount_type != now_amount_type) {
                 return Err(Error::Amount);
             }
-            let int_lock = load_cell_lock_hash(2, Source::Input)?;
-            let out_lock = load_cell_lock_hash(2, Source::Output)?;
-            if int_lock != out_lock {
-                return Err(Error::Amount);
-            }
-            if now_com_lock != int_lock {
+
+            if now_com_lock != pre_amount_lock {
                 return Err(Error::Verify);
             }
 
@@ -217,6 +230,12 @@ pub fn main() -> Result<(), Error> {
                     Err(SysError::IndexOutOfBound) => break,
                     Err(err) => return Err(err.into()),
                 };
+
+                let udt_type = load_cell_type_hash(i, Source::Output)?;
+
+                if udt_type != now_amount_type {
+                    continue;
+                }
 
                 if data.len() != UDT_LEN {
                     return Err(Error::Encoding);
