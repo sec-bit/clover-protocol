@@ -5,27 +5,26 @@ use async_std::{
 use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
-use ckb_zkp::math::{PairingEngine,  Zero};
 use ckb_zkp::curve::bn_256::Bn_256;
 use ckb_zkp::curve::PrimeField;
+use ckb_zkp::math::{PairingEngine, Zero};
 use core::ops::Mul;
-use core::str::FromStr;
-use mimc_rs::{Mimc7, generate_constants,hash};
-use num_bigint::BigInt;
+use serde::{Deserialize, Serialize};
 
 mod account;
+mod asvc;
 mod block;
 mod storage;
 mod transaction;
-mod asvc;
 
-use storage::Storage;
-use transaction::{Transaction, FullPubKey};
 use asvc::initialize_asvc;
-
+use storage::Storage;
+use transaction::{FullPubKey, RawTransaction, Transaction};
 
 /// listening task.
-async fn listen_contracts<E: PairingEngine>(_s: Arc<Mutex<Storage::<E>>>) -> Result<(), std::io::Error> {
+async fn listen_contracts<E: PairingEngine>(
+    _s: Arc<Mutex<Storage<E>>>,
+) -> Result<(), std::io::Error> {
     let mut l1_block_height = 0;
 
     loop {
@@ -47,7 +46,7 @@ async fn listen_contracts<E: PairingEngine>(_s: Arc<Mutex<Storage::<E>>>) -> Res
 }
 
 /// Miner task.
-async fn miner<E: PairingEngine> (storage: Arc<Mutex<Storage::<E>>>) -> Result<(), std::io::Error> {
+async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), std::io::Error> {
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
@@ -70,8 +69,13 @@ async fn miner<E: PairingEngine> (storage: Arc<Mutex<Storage::<E>>>) -> Result<(
 }
 
 /// send transaction api.
-async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -> Result<String, Error> {
-    let mut tx: Transaction<E> = req.body_json().await?;
+async fn send_tx<E: PairingEngine>(
+    mut req: Request<Arc<Mutex<Storage<E>>>>,
+) -> Result<String, Error> {
+    let raw_tx: RawTransaction = req.body_json().await?;
+    let mut tx = raw_tx
+        .to_tx::<E>()
+        .map_err(|_| Error::from_str(StatusCode::BadRequest, "Tx Error"))?;
     println!("Recv tx: {:?}", tx.hash());
 
     let i = tx.i;
@@ -79,73 +83,86 @@ async fn send_tx<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -
 
     let block_height = req.state().lock().await.block_height;
     let user_height = req.state().lock().await.next_user;
-    let commit = req.state().lock().await.commit;
+    let commit = &req.state().lock().await.commit;
     let n = req.state().lock().await.size;
-    let full_pubkey = req.state().lock().await.full_pubkeys[i as usize];
-    let j_updatekey = req.state().lock().await.full_pubkeys[j as usize].updateKey;
+    let full_pubkey = req.state().lock().await.full_pubkeys[i as usize].clone();
+    let j_updatekey = req.state().lock().await.full_pubkeys[j as usize]
+        .updateKey
+        .clone();
+
     let value = req.state().lock().await.values[i as usize];
     let nonce = req.state().lock().await.nonces[i as usize];
-    let proof = req.state().lock().await.proofs[i as usize];
+    let proof = req.state().lock().await.proofs[i as usize].clone();
 
-    if user_height <= i  || i < 0{
-        return Err(Error::from_str(StatusCode::Ok, "the user number is invalid"))
+    if user_height <= i || i < 0 {
+        return Err(Error::from_str(
+            StatusCode::Ok,
+            "the user number is invalid",
+        ));
     }
 
-    if user_height <= j  || j < 0{
-        return Err(Error::from_str(StatusCode::Ok, "the user number is invalid"))
+    if user_height <= j || j < 0 {
+        return Err(Error::from_str(
+            StatusCode::Ok,
+            "the user number is invalid",
+        ));
     }
 
-    if nonce >= tx.nonce{
-        return Err(Error::from_str(StatusCode::Ok, "the user nonce is invalid"))
+    if nonce >= tx.nonce {
+        return Err(Error::from_str(StatusCode::Ok, "the user nonce is invalid"));
     }
 
     let balance = req.state().lock().await.balances[i as usize];
-    let tx = Transaction::<E>{
+    let tx = Transaction::<E> {
         tx_type: 1 as u8,
         full_pubkey: full_pubkey,
         i: i,
         value: tx.value,
         j: j,
         j_updatekey: j_updatekey,
-        nonce:tx.nonce,
+        nonce: tx.nonce,
         proof: proof,
-        balance: balance,  //TODO: 处理注册之前存的钱
+        balance: balance, //TODO: 处理注册之前存的钱
         addr: E::Fr::zero(),
     };
-    
+
+    let tx_hash = tx.hash_string();
+
     if req.state().lock().await.try_insert_tx(tx) {
-        Ok("0x".to_owned())
+        Ok(tx_hash)
     } else {
         Ok("Invalid Tx".to_owned())
     }
 }
 
-
-
+#[derive(Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub pubkey: String,
 }
 
-async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) -> Result<String, Error> {
+async fn register<E: PairingEngine>(
+    mut req: Request<Arc<Mutex<Storage<E>>>>,
+) -> Result<String, Error> {
     let reg: RegisterRequest = req.body_json().await?;
     // println!("Recv tx: {:?}", tx.hash());
 
     let user_height = req.state().lock().await.next_user;
-    let commit = req.state().lock().await.commit;
+    let commit = &req.state().lock().await.commit;
     let n = req.state().lock().await.size;
 
-    let update_keys = req.state().lock().await.params.proving_key.update_keys[user_height as usize];
-    let new_full_pubkey = FullPubKey::<E>{
+    let update_keys =
+        req.state().lock().await.params.proving_key.update_keys[user_height as usize].clone();
+    let new_full_pubkey = FullPubKey::<E> {
         i: user_height,
-        updateKey: update_keys,
-        traditionPubKey: reg.pubkey, 
+        updateKey: update_keys.clone(),
+        traditionPubKey: reg.pubkey,
     };
     req.state().lock().await.tmp_user_height_increment();
 
-    let proof = req.state().lock().await.proofs[user_height as usize];
-    let addr = calcuAddr(new_full_pubkey)?;
-   
-    let tx = Transaction::<E>{
+    let proof = req.state().lock().await.proofs[user_height as usize].clone();
+    let addr = new_full_pubkey.hash();
+
+    let tx = Transaction::<E> {
         tx_type: 2 as u8,
         full_pubkey: new_full_pubkey,
         i: user_height,
@@ -154,8 +171,8 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
         j_updatekey: update_keys,
         nonce: 0,
         proof: proof,
-        balance: 0,  //TODO: 处理注册之前存的钱
-        addr: addr.mul(&E::Fr::from_repr((2u64.pow(50)).into()))
+        balance: 0, //TODO: 处理注册之前存的钱
+        addr: addr.mul(&E::Fr::from_repr((2u64.pow(50)).into())),
     };
 
     if req.state().lock().await.try_insert_tx(tx) {
@@ -165,39 +182,18 @@ async fn register<E: PairingEngine>(mut req: Request<Arc<Mutex<Storage::<E>>>>) 
     }
 }
 
-fn calcuAddr<E: PairingEngine>(full_pubkey: FullPubKey::<E>) ->  Result<E::Fr, Error>{
-    // mimc
-    let constants = generate_constants();
-    let mut big_arr1: Vec<BigInt> = Vec::new();
-    let bi: BigInt = BigInt::parse_bytes(b"i", full_pubkey.i).unwrap();
-    big_arr1.push(bi.clone());
-    let h1 = hash(big_arr1).unwrap();
-    //TODO: add upk
-    let result = E::Fr::from_str(h1.to_string());
-    let value = match result {
-        Ok(result) => result,
-        Err(error) => {
-           return Err(Error::from_str(StatusCode::Ok, "failed to calculate address"));
-        },
-    };
-    Ok(value)
-}
-
 /// withdraw api.
 
 fn main() {
-
     let size = 1024;
     let init_result = initialize_asvc::<Bn_256>(size);
     let (params, commit, proofs) = match init_result {
         Ok(result) => result,
-        Err(error) => {
-            panic!("Problem initializing asvc: {:?}", error)
-        },
+        Err(error) => panic!("Problem initializing asvc: {:?}", error),
     };
 
     // TODO: submit to contract
-    
+
     // mock storage
     let storage = Storage::<Bn_256>::init(params, commit, proofs);
     let s = Arc::new(Mutex::new(storage));
