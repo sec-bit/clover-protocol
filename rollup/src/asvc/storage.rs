@@ -1,7 +1,8 @@
-use ckb_zkp::curve::PrimeField;
 use ckb_zkp::gadgets::mimc;
-use ckb_zkp::math::{fft::EvaluationDomain, One, PairingEngine, ToBytes, Zero};
-use ckb_zkp::scheme::asvc::{update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey};
+use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes};
+use ckb_zkp::scheme::asvc::{
+    prove_pos, update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey,
+};
 use ckb_zkp::scheme::r1cs::SynthesisError;
 use std::collections::HashMap;
 use std::ops::{Add, Neg, Sub};
@@ -128,8 +129,10 @@ impl<E: PairingEngine> Storage<E> {
 
     /// miner new block.
     pub fn create_block(&mut self) -> Option<Block<E>> {
-        let block_height = self.block_height;
-        let mut user_height = self.next_user;
+        if self.pools.len() == 0 {
+            println!("miner block: no transactions.");
+            return None;
+        }
 
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
@@ -137,15 +140,23 @@ impl<E: PairingEngine> Storage<E> {
         let mut new_commit = self.commit.clone();
 
         let mut txs = Vec::<Transaction<E>>::new();
+        let mut proof_params = vec![];
+        let mut froms = vec![];
 
         //let nonce_offest_fr = E::Fr::one() >> 128;
-        let nonce_offest_fr = E::Fr::one();
+        let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
+        for _ in 0..128 {
+            // balance is u128
+            repr.div2();
+        }
 
-        for (tx_hash, tx) in self.pools.drain() {
+        let nonce_offest_fr = <E::Fr as PrimeField>::from_repr(repr);
+
+        for (_tx_hash, tx) in self.pools.drain() {
             match tx.tx_type {
                 TxType::Transfer(from, to, amount, ref to_upk) => {
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-                    let balance_fr: E::Fr = u128_to_fr::<E>(tx.balance);
+                    //let balance_fr: E::Fr = u128_to_fr::<E>(tx.balance);
                     let from_upk = &self.params.proving_key.update_keys[from as usize];
 
                     if let Ok(res) = verify_pos::<E>(
@@ -178,7 +189,6 @@ impl<E: PairingEngine> Storage<E> {
                 }
                 TxType::Register(account, ref _pubkey) => {
                     let from_upk = &self.params.proving_key.update_keys[account as usize];
-
                     new_commit = update_commit::<E>(
                         &new_commit,
                         tx.proof_param().add(&nonce_offest_fr),
@@ -199,10 +209,16 @@ impl<E: PairingEngine> Storage<E> {
                 }
             }
 
+            froms.push(tx.from());
+            proof_params.push(tx.proof_param());
+
             txs.push(tx);
         }
 
+        let proof = prove_pos::<E>(&self.params.proving_key, proof_params, froms).unwrap();
+
         let block = Block {
+            proof,
             block_height: self.block_height,
             commit: self.commit.clone(),
             new_commit: new_commit,
@@ -215,7 +231,6 @@ impl<E: PairingEngine> Storage<E> {
     /// handle when the block commit to L1.
     pub fn handle_block(&mut self, block: Block<E>) {
         let n = ACCOUNT_SIZE;
-        let omega = self.omega;
 
         self.block_height = block.block_height;
         self.commit = block.new_commit;
@@ -283,10 +298,8 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     /// if send to L1 failure, revert the block's txs.
-    pub fn revert_block(&mut self, block: Block<E>) {
+    pub fn revert_block(&mut self, _block: Block<E>) {
         todo!()
-        //self.block_remove.remove(&block.block_height);
-        //self.block_changes.remove(&block.block_height);
     }
 
     /// update local data from L1 for withdrawing and depositing
@@ -296,7 +309,7 @@ impl<E: PairingEngine> Storage<E> {
         let omega = self.omega;
         let mut cvalues = HashMap::<u32, E::Fr>::new();
 
-        for tx in block.txs.iter() {
+        for _tx in block.txs.iter() {
             // let value = E::Fr::from_repr((amount as u64).into());
             // match tx.tx_type {
             //     1 => {

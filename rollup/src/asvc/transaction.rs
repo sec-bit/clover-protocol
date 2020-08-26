@@ -164,6 +164,15 @@ impl<E: PairingEngine> Transaction<E> {
         vec![]
     }
 
+    pub fn from(&self) -> u32 {
+        match self.tx_type {
+            TxType::Deposit(from, ..)
+            | TxType::Withdraw(from, ..)
+            | TxType::Transfer(from, ..)
+            | TxType::Register(from, ..) => from,
+        }
+    }
+
     pub fn id(&self) -> String {
         "0x000000".to_owned()
     }

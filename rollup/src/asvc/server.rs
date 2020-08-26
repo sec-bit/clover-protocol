@@ -46,11 +46,17 @@ async fn listen_contracts<E: PairingEngine>(
 
 /// Miner task.
 async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), std::io::Error> {
+    let vk = storage.lock().await.params.verification_key.clone();
+    let omega = storage.lock().await.omega.clone();
+
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
 
         if let Some(block) = storage.lock().await.create_block() {
+            println!("Block verify is: {:?}", block.verify(&vk, omega));
+            continue;
+
             if let Ok(mut res) = surf::post("http://127.0.0.1:8000/block")
                 .body_string(block.to_hex())
                 .await
@@ -67,7 +73,7 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RegisterRequest {
     pub pubkey: String,
     pub psk: String,
@@ -77,10 +83,12 @@ async fn register<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: RegisterRequest = req.body_json().await?;
+
     let (pubkey, psk) = (
         PublicKey::from_hex(&params.pubkey).unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
+    println!("debug: {:?}", params);
 
     let (account, upk) = req.state().lock().await.new_next_user();
     let proof = req.state().lock().await.user_proof(account).clone();

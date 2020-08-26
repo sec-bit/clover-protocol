@@ -1027,7 +1027,7 @@ checksum = "3ce774f97919ed2458881e02ddf431ae82bc6203fbae8d75563b4499126c0ad2"
 [[package]]
 name = "ckb-zkp"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
 dependencies = [
  "byteorder",
  "curve",
@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "curve"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
 dependencies = [
  "math",
 ]
@@ -2350,7 +2350,7 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "math"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
 dependencies = [
  "derivative",
  "math-derive",
@@ -2363,7 +2363,7 @@ dependencies = [
 [[package]]
 name = "math-derive"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
@@ -3346,7 +3346,7 @@ dependencies = [
 [[package]]
 name = "scheme"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#d5697f656c80db80cd9099281dbd37ad2283f370"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
 dependencies = [
  "curve",
  "digest 0.8.1",
