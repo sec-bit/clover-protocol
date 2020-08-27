@@ -118,7 +118,7 @@ checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 name = "asvc_rollup"
 version = "0.1.0"
 dependencies = [
- "ckb-zkp 0.1.0",
+ "ckb-zkp",
  "hex",
 ]
 
@@ -1035,24 +1035,13 @@ checksum = "3ce774f97919ed2458881e02ddf431ae82bc6203fbae8d75563b4499126c0ad2"
 [[package]]
 name = "ckb-zkp"
 version = "0.1.0"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
 dependencies = [
  "byteorder",
- "curve 0.1.0",
- "math 0.1.0",
+ "curve",
+ "math",
  "rand 0.7.3",
- "scheme 0.1.0",
-]
-
-[[package]]
-name = "ckb-zkp"
-version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
-dependencies = [
- "byteorder",
- "curve 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
- "math 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
- "rand 0.7.3",
- "scheme 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "scheme",
 ]
 
 [[package]]
@@ -1291,16 +1280,9 @@ dependencies = [
 [[package]]
 name = "curve"
 version = "0.1.0"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
 dependencies = [
- "math 0.1.0",
-]
-
-[[package]]
-name = "curve"
-version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
-dependencies = [
- "math 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "math",
 ]
 
 [[package]]
@@ -2376,21 +2358,10 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "math"
 version = "0.1.0"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
 dependencies = [
  "derivative",
- "math-derive 0.1.0",
- "num-traits",
- "rand 0.7.3",
- "unroll",
-]
-
-[[package]]
-name = "math"
-version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
-dependencies = [
- "derivative",
- "math-derive 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "math-derive",
  "num-traits",
  "rand 0.7.3",
  "rayon",
@@ -2400,16 +2371,7 @@ dependencies = [
 [[package]]
 name = "math-derive"
 version = "0.1.0"
-dependencies = [
- "proc-macro2 1.0.19",
- "quote 1.0.7",
- "syn 1.0.39",
-]
-
-[[package]]
-name = "math-derive"
-version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
@@ -2529,7 +2491,7 @@ name = "mock"
 version = "0.1.0"
 dependencies = [
  "async-std",
- "ckb-zkp 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "ckb-zkp",
  "rollup",
  "tide",
 ]
@@ -3334,7 +3296,7 @@ dependencies = [
  "asvc_rollup",
  "async-std",
  "ckb-tool",
- "ckb-zkp 0.1.0",
+ "ckb-zkp",
  "hex",
  "num-bigint",
  "rand 0.7.3",
@@ -3393,21 +3355,11 @@ dependencies = [
 [[package]]
 name = "scheme"
 version = "0.1.0"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
 dependencies = [
- "curve 0.1.0",
- "math 0.1.0",
- "rand 0.7.3",
- "smallvec 1.4.2",
-]
-
-[[package]]
-name = "scheme"
-version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
-dependencies = [
- "curve 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "curve",
  "digest 0.8.1",
- "math 0.1.0 (git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc)",
+ "math",
  "merlin",
  "rand 0.7.3",
  "rayon",

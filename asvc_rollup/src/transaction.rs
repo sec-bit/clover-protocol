@@ -319,7 +319,7 @@ impl FromBytes for TxType {
 
                 Ok(TxType::Transfer(from, to, amount))
             }
-            _ => Err(io::Error),
+            _ => panic!("Invalid tx"),
         }
     }
 }
