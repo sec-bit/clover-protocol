@@ -21,7 +21,7 @@ use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, AC
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
-    _s: Arc<Mutex<Storage<E>>>,
+    s: Arc<Mutex<Storage<E>>>,
 ) -> Result<(), std::io::Error> {
     let mut l1_block_height = 0;
 
@@ -35,6 +35,8 @@ async fn listen_contracts<E: PairingEngine>(
 
         // TODO
         l1_block_height += 1;
+
+        // TODO s.lock().await.handle_block(block);
 
         println!(
             "Listen Task: end read block's txs. Current block height: {}",
@@ -128,13 +130,35 @@ async fn deposit<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: DepositRequest = req.body_json().await?;
-    let (to, amount, psk) = (
+    let (from, amount, sk) = (
         params.to,
         params.amount,
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
-    Ok("TODO".to_owned())
+    if !req.state().lock().await.contains_users(&[from]) {
+        return Err(Error::from_str(
+            StatusCode::BadRequest,
+            "the user number is invalid",
+        ));
+    }
+
+    let fpk = req.state().lock().await.user_fpk(from);
+    let nonce = req.state().lock().await.new_next_nonce(from);
+    let balance = req.state().lock().await.user_balance(from);
+    let proof = req.state().lock().await.user_proof(from);
+
+    let tx = Transaction::<E>::new_deposit(from, amount, fpk, nonce, balance, proof, &sk);
+
+    let tx_hash_id = tx.id();
+
+    if let Some(_block) = req.state().lock().await.build_block(vec![tx]) {
+        // TODO build depost transaction & send to ckb
+
+        Ok(tx_hash_id)
+    } else {
+        Ok("Invalid Tx".to_owned())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -149,14 +173,43 @@ async fn withdraw<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: WithdrawRequest = req.body_json().await?;
-    let (from, amount, psk) = (
+    let (from, amount, sk) = (
         params.from,
         params.amount,
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
-    // send tx to ckb
-    Ok("TODO".to_owned())
+    if !req.state().lock().await.contains_users(&[from]) {
+        return Err(Error::from_str(
+            StatusCode::BadRequest,
+            "the user number is invalid",
+        ));
+    }
+
+    let balance = req.state().lock().await.user_balance(from);
+
+    if amount > balance {
+        return Err(Error::from_str(
+            StatusCode::BadRequest,
+            "the user balance not enough",
+        ));
+    }
+
+    let fpk = req.state().lock().await.user_fpk(from);
+    let nonce = req.state().lock().await.new_next_nonce(from);
+    let proof = req.state().lock().await.user_proof(from);
+
+    let tx = Transaction::<E>::new_withdraw(from, amount, fpk, nonce, balance, proof, &sk);
+
+    let tx_hash_id = tx.id();
+
+    if let Some(_block) = req.state().lock().await.build_block(vec![tx]) {
+        // TODO build withdraw transaction & send to ckb
+
+        Ok(tx_hash_id)
+    } else {
+        Ok("Invalid Tx".to_owned())
+    }
 }
 
 #[derive(Serialize, Deserialize)]

@@ -91,10 +91,6 @@ impl<E: PairingEngine> Storage<E> {
         self.full_pubkeys[u as usize].clone()
     }
 
-    pub fn user_upk(&self, u: u32) -> UpdateKey<E> {
-        self.full_pubkeys[u as usize].update_key.clone()
-    }
-
     pub fn user_proof(&self, u: u32) -> Proof<E> {
         self.proofs[u as usize].clone()
     }
@@ -137,29 +133,15 @@ impl<E: PairingEngine> Storage<E> {
         true
     }
 
-    /// miner new block.
-    pub fn create_block(&mut self) -> Option<Block<E>> {
-        if self.pools.len() == 0 {
-            println!("miner block: no transactions.");
-            return None;
-        }
-
+    /// deposit & withdraw use when operate on L1, need build a block to change.
+    pub fn build_block(&mut self, txs: Vec<Transaction<E>>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
         let mut new_commit = self.commit.clone();
 
-        let mut txs = Vec::<Transaction<E>>::new();
         let mut proof_params = vec![E::Fr::zero(); n];
         let mut froms = vec![];
-
-        // for i in 0..n {
-        //     proof_params[i] = Transaction::<E>::static_proof_param(
-        //         &self.full_pubkeys[i],
-        //         self.nonces[i],
-        //         self.balances[i],
-        //     );
-        // }
 
         //let nonce_offest_fr = E::Fr::one() >> 128;
         let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
@@ -170,8 +152,7 @@ impl<E: PairingEngine> Storage<E> {
 
         let nonce_offest_fr = <E::Fr as PrimeField>::from_repr(repr);
 
-        let all_txs = self.pools.drain();
-        for (_tx_hash, tx) in all_txs.take(1) {
+        for tx in &txs {
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
@@ -225,20 +206,38 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .unwrap();
                 }
-                TxType::Deposit(_to, _amount) => {
-                    // not handle deposit
-                    panic!("MUST NOT HERE");
+                TxType::Deposit(from, amount) => {
+                    let from_upk = &self.params.proving_key.update_keys[from as usize];
+                    let amount_fr: E::Fr = u128_to_fr::<E>(amount);
+
+                    new_commit = update_commit::<E>(
+                        &new_commit,
+                        amount_fr.add(&nonce_offest_fr),
+                        from,
+                        from_upk,
+                        omega,
+                        n,
+                    )
+                    .unwrap();
                 }
-                TxType::Withdraw(_from, _amount) => {
-                    // not handle withdraw
-                    panic!("MUST NOT HERE");
+                TxType::Withdraw(from, amount) => {
+                    let from_upk = &self.params.proving_key.update_keys[from as usize];
+                    let amount_fr: E::Fr = u128_to_fr::<E>(amount);
+
+                    new_commit = update_commit::<E>(
+                        &new_commit,
+                        amount_fr.neg().add(&nonce_offest_fr),
+                        from,
+                        from_upk,
+                        omega,
+                        n,
+                    )
+                    .unwrap();
                 }
             }
 
             froms.push(tx.from());
             proof_params[tx.from() as usize] = tx.proof_param();
-
-            txs.push(tx);
         }
 
         let proof = prove_pos::<E>(&self.params.proving_key, proof_params, froms).unwrap();
@@ -252,6 +251,17 @@ impl<E: PairingEngine> Storage<E> {
         };
 
         Some(block)
+    }
+
+    /// miner new block.
+    pub fn create_block(&mut self) -> Option<Block<E>> {
+        if self.pools.len() == 0 {
+            println!("miner block: no transactions.");
+            return None;
+        }
+
+        let txs = self.pools.drain().map(|(_k, v)| v).collect();
+        self.build_block(txs)
     }
 
     /// handle when the block commit to L1.
@@ -324,74 +334,7 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     /// if send to L1 failure, revert the block's txs.
-    pub fn revert_block(&mut self, _block: Block<E>) {
+    pub fn revert_block(&mut self, block: Block<E>) {
         todo!()
-    }
-
-    /// update local data from L1 for withdrawing and depositing
-    pub fn update_block(&mut self, block: Block<E>) {
-        let mut new_commit = self.commit.clone();
-        let n = ACCOUNT_SIZE;
-        let omega = self.omega;
-        let mut cvalues = HashMap::<u32, E::Fr>::new();
-
-        for _tx in block.txs.iter() {
-            // let value = E::Fr::from_repr((amount as u64).into());
-            // match tx.tx_type {
-            //     1 => {
-            //         // deposit
-            //         self.balances[from as usize] = self.balances[from as usize] + amount;
-            //         self.proof_param[from as usize] = self.proof_param[from as usize].add(&value);
-            //         if cvalues.contains_key(&from) {
-            //             cvalues.insert(from, cvalues[&from] + &value);
-            //         } else {
-            //             cvalues.insert(from, value);
-            //         }
-
-            //         new_commit = update_commit::<E>(
-            //             &new_commit,
-            //             value,
-            //             from,
-            //             &self.params.proving_key.update_keys[from as usize],
-            //             omega,
-            //             n as usize,
-            //         )
-            //         .unwrap();
-            //     }
-            //     2 => {
-            //         // withdraw
-            //         self.balances[from as usize] = self.balances[from as usize] - amount;
-            //         self.proof_param[from as usize] = self.proof_param[from as usize].sub(&value);
-            //         if cvalues.contains_key(&from) {
-            //             cvalues.insert(from, cvalues[&from] - &value);
-            //         } else {
-            //             cvalues.insert(from, value.neg());
-            //         }
-
-            //         new_commit = update_commit::<E>(
-            //             &new_commit,
-            //             value.neg(),
-            //             from,
-            //             &self.params.proving_key.update_keys[from as usize],
-            //             omega,
-            //             n as usize,
-            //         )
-            //         .unwrap();
-            //     }
-            //     _ => todo!(),
-            // }
-        }
-
-        update_proofs::<E>(
-            &self.params.proving_key.update_keys,
-            &self.commit,
-            &mut self.proofs,
-            &cvalues,
-            n as usize,
-        )
-        .unwrap();
-
-        self.block_height = block.block_height;
-        self.commit = new_commit;
     }
 }
