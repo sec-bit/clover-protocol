@@ -2,14 +2,12 @@ use async_std::{
     sync::{Arc, Mutex},
     task,
 };
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
 use ckb_zkp::curve::bn_256::Bn_256;
-use ckb_zkp::curve::PrimeField;
-use ckb_zkp::math::{PairingEngine, Zero};
-use core::ops::Mul;
-use serde::{Deserialize, Serialize};
+use ckb_zkp::math::PairingEngine;
 
 mod asvc;
 mod storage;

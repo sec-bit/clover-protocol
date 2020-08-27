@@ -91,16 +91,16 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
 }
 
 /// asvc rollup contract address.
-const asvc_contract_hash: &'static str = "0x";
+const ASVC_CONTRACT_HASH: &'static str = "0x";
 
 /// asvc asset locked contract address.
-const asvc_asset_hash: &'static str = "0x";
+const ASVC_ASSET_HASH: &'static str = "0x";
 
 /// merkle tree rollup contract address.
-const merkletree_contract_hash: &'static str = "0x";
+const MERKLETREE_CONTRACT_HASH: &'static str = "0x";
 
 /// merkle tree asset locked contract address.
-const merkletree_asset_hash: &'static str = "0x";
+const MERKLETREE_ASSET_HASH: &'static str = "0x";
 
 /// init state of L2
 pub async fn init_state(prev: String, contract: String, script: String) -> Result<String, ()> {

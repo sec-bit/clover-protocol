@@ -1,7 +1,7 @@
 use ckb_zkp::{
     gadgets::mimc,
     math::{
-        io, io::Result as IoResult, serialize::*, BigInteger, FromBytes, PairingEngine, PrimeField,
+        io::Result as IoResult, serialize::*, BigInteger, FromBytes, PairingEngine, PrimeField,
         ToBytes,
     },
     scheme::asvc::{Proof, UpdateKey},

@@ -1,7 +1,6 @@
-use ckb_zkp::math::{fft::EvaluationDomain, PairingEngine, ProjectiveCurve, Zero};
+use ckb_zkp::math::{fft::EvaluationDomain, PairingEngine, Zero};
 use ckb_zkp::scheme::asvc::{
-    commit, key_gen, prove_pos, update_commit, update_proof, verify_pos, Commitment, Parameters,
-    Proof, UpdateKey,
+    commit, key_gen, prove_pos, update_proof, Commitment, Parameters, Proof, UpdateKey,
 };
 use ckb_zkp::scheme::r1cs::SynthesisError;
 use rand::thread_rng;
