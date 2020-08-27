@@ -4,10 +4,10 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
+use std::{format, string::String, vec::Vec};
 
 pub mod block;
 pub mod transaction;

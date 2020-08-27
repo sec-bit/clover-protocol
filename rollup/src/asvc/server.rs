@@ -12,13 +12,12 @@ use core::ops::Mul;
 use serde::{Deserialize, Serialize};
 
 mod asvc;
-mod block;
 mod storage;
-mod transaction;
 
 use asvc::initialize_asvc;
 use storage::Storage;
-use transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
+
+use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -54,7 +53,14 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
         task::sleep(Duration::from_secs(10)).await;
 
         if let Some(block) = storage.lock().await.create_block() {
-            println!("Block verify is: {:?}", block.verify(&vk, omega));
+            println!(
+                "Block verify is: {:?}",
+                block.verify(
+                    &vk,
+                    omega,
+                    &storage.lock().await.params.proving_key.update_keys
+                )
+            );
             continue;
 
             if let Ok(mut res) = surf::post("http://127.0.0.1:8000/block")
@@ -99,7 +105,7 @@ async fn register<E: PairingEngine>(
         tradition_pubkey: pubkey.clone(),
     };
 
-    let tx = Transaction::<E>::new_register(account, pubkey, fpk, 0, 0, proof, &psk);
+    let tx = Transaction::<E>::new_register(account, fpk, 0, 0, proof, &psk);
 
     let tx_id = tx.id();
 
@@ -186,7 +192,6 @@ async fn transfer<E: PairingEngine>(
     }
 
     let from_fpk = req.state().lock().await.user_fpk(from);
-    let to_upk = req.state().lock().await.user_fpk(to).update_key;
     let nonce = req.state().lock().await.new_next_nonce(from);
     let balance = req.state().lock().await.user_balance(from);
     let proof = req.state().lock().await.user_proof(from);
@@ -198,9 +203,8 @@ async fn transfer<E: PairingEngine>(
         ));
     }
 
-    let tx = Transaction::<E>::new_transfer(
-        from, to, amount, to_upk, from_fpk, nonce, balance, proof, &psk,
-    );
+    let tx =
+        Transaction::<E>::new_transfer(from, to, amount, from_fpk, nonce, balance, proof, &psk);
 
     let tx_hash_id = tx.id();
 

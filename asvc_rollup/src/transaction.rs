@@ -13,7 +13,7 @@ pub const ACCOUNT_SIZE: usize = 16;
 
 pub type TxHash = Vec<u8>;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct PublicKey(pub Vec<u8>);
 
 pub struct SecretKey(pub Vec<u8>);
@@ -68,7 +68,7 @@ impl<E: PairingEngine> FullPubKey<E> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum TxType {
     /// to_account, amount.
     Deposit(u32, u128),
@@ -98,7 +98,7 @@ impl TxType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Transaction<E: PairingEngine> {
     /// transaction type. include
     pub tx_type: TxType,

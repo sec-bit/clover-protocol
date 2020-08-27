@@ -4,9 +4,9 @@ use ckb_zkp::scheme::asvc::{
 };
 
 use crate::transaction::{Transaction, ACCOUNT_SIZE};
-use crate::{String, Vec};
+use crate::{format, String, Vec};
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Block<E: PairingEngine> {
     pub block_height: u32,
     pub commit: Commitment<E>,
@@ -64,9 +64,9 @@ impl<E: PairingEngine> Block<E> {
         vk: &VerificationKey<E>,
         omega: E::Fr,
         upks: &Vec<UpdateKey<E>>,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, String> {
         if upks.len() != ACCOUNT_SIZE {
-            return Err(());
+            return Err(String::from("ERR UPK LENGTH"));
         }
 
         let mut proof_params = Vec::new();
@@ -89,7 +89,11 @@ impl<E: PairingEngine> Block<E> {
                 omega,
                 ACCOUNT_SIZE,
             )
-            .map_err(|_| ())?;
+            .map_err(|e| format!("UPDATE COMMIT ERROR: {:?}", e))?;
+        }
+
+        if tmp_commit.commit != self.new_commit.commit {
+            return Err(String::from("COMMIT NOT EQ"));
         }
 
         verify_pos::<E>(
@@ -100,6 +104,6 @@ impl<E: PairingEngine> Block<E> {
             &self.proof,
             omega,
         )
-        .map_err(|_| ())
+        .map_err(|_| String::from("VERIFY POS FAILURE"))
     }
 }

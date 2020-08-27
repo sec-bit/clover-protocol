@@ -7,7 +7,7 @@ use ckb_zkp::scheme::r1cs::SynthesisError;
 use rand::thread_rng;
 use std::collections::HashMap;
 
-use super::transaction::{FullPubKey, Transaction};
+use asvc_rollup::transaction::{FullPubKey, Transaction};
 
 pub fn initialize_asvc<E>(
     n: usize,

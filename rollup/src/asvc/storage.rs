@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use std::ops::{Add, Neg, Sub};
 
 use super::asvc::update_proofs;
-use super::block::Block;
-use super::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType, ACCOUNT_SIZE};
+
+use asvc_rollup::block::Block;
+use asvc_rollup::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType, ACCOUNT_SIZE};
 
 pub struct Storage<E: PairingEngine> {
     pub block_height: u32,
@@ -90,6 +91,10 @@ impl<E: PairingEngine> Storage<E> {
         self.full_pubkeys[u as usize].clone()
     }
 
+    pub fn user_upk(&self, u: u32) -> UpdateKey<E> {
+        self.full_pubkeys[u as usize].update_key.clone()
+    }
+
     pub fn user_proof(&self, u: u32) -> Proof<E> {
         self.proofs[u as usize].clone()
     }
@@ -103,7 +108,7 @@ impl<E: PairingEngine> Storage<E> {
 
         if !self.pools.contains_key(&tx_hash) {
             match tx.tx_type {
-                TxType::Transfer(from, to, amount, ref _to_upk) => {
+                TxType::Transfer(from, to, amount) => {
                     if amount > self.tmp_balances[from as usize] {
                         return false;
                     }
@@ -112,7 +117,7 @@ impl<E: PairingEngine> Storage<E> {
                     self.tmp_balances[to as usize] += amount;
                     self.tmp_nonces[from as usize] += 1;
                 }
-                TxType::Register(account, ref _pubkey) => {
+                TxType::Register(account) => {
                     self.tmp_next_user += 1;
                     self.tmp_nonces[account as usize] = 1; // account first tx is register.
                 }
@@ -165,9 +170,10 @@ impl<E: PairingEngine> Storage<E> {
 
         let nonce_offest_fr = <E::Fr as PrimeField>::from_repr(repr);
 
-        for (_tx_hash, tx) in self.pools.drain() {
+        let all_txs = self.pools.drain();
+        for (_tx_hash, tx) in all_txs.take(1) {
             match tx.tx_type {
-                TxType::Transfer(from, to, amount, ref to_upk) => {
+                TxType::Transfer(from, to, amount) => {
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
                     //let balance_fr: E::Fr = u128_to_fr::<E>(tx.balance);
                     let from_upk = &self.params.proving_key.update_keys[from as usize];
@@ -197,10 +203,17 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .unwrap();
 
-                    new_commit =
-                        update_commit::<E>(&new_commit, amount_fr, to, to_upk, omega, n).unwrap();
+                    new_commit = update_commit::<E>(
+                        &new_commit,
+                        amount_fr,
+                        to,
+                        &self.full_pubkeys[to as usize].update_key,
+                        omega,
+                        n,
+                    )
+                    .unwrap();
                 }
-                TxType::Register(account, ref _pubkey) => {
+                TxType::Register(account) => {
                     let from_upk = &self.params.proving_key.update_keys[account as usize];
                     new_commit = update_commit::<E>(
                         &new_commit,
@@ -266,13 +279,13 @@ impl<E: PairingEngine> Storage<E> {
         // chnage register full_pubkey
         for tx in block.txs {
             match tx.tx_type {
-                TxType::Register(account, pubkey) => {
+                TxType::Register(account) => {
                     let upk = self.full_pubkeys[account as usize].update_key.clone();
 
                     self.full_pubkeys[account as usize] = FullPubKey {
                         i: account,
                         update_key: upk,
-                        tradition_pubkey: pubkey.clone(),
+                        tradition_pubkey: tx.pubkey.clone(),
                     };
                 }
                 _ => continue,
