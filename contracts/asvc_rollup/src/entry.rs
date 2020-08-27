@@ -19,6 +19,7 @@ pub fn main() -> Result<(), Error> {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
+
     let now_com_lock = load_cell_lock_hash(0, Source::Output)?;
 
     if now_commit.len() == 0 {

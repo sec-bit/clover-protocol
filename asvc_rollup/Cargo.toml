@@ -1,0 +1,12 @@
+[package]
+name = "asvc_rollup"
+version = "0.1.0"
+authors = ["sun <huachuang20@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc"] }
+#ckb-zkp = { path="../../ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc"] }
+hex = { version = "0.4", default-feautres = false }

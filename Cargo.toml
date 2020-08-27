@@ -3,6 +3,7 @@ members = [
     "tests",
     "rollup",
     "mock",
+    "asvc_rollup",
 ]
 exclude = [
     "contracts",

@@ -115,6 +115,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 
 [[package]]
+name = "asvc_rollup"
+version = "0.1.0"
+dependencies = [
+ "ckb-zkp",
+ "hex",
+]
+
+[[package]]
 name = "async-attributes"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -126,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "async-channel"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43de69555a39d52918e2bc33a408d3c0a86c829b212d898f4ca25d21a6387478"
+checksum = "59386c3aa61f4e14c4ddda1a6744c119b4bf278ec9f866d3c20bc5728ee0eb97"
 dependencies = [
  "concurrent-queue",
  "event-listener",
@@ -544,7 +552,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "serde",
- "time 0.1.43",
+ "time 0.1.44",
 ]
 
 [[package]]
@@ -1027,7 +1035,7 @@ checksum = "3ce774f97919ed2458881e02ddf431ae82bc6203fbae8d75563b4499126c0ad2"
 [[package]]
 name = "ckb-zkp"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
 dependencies = [
  "byteorder",
  "curve",
@@ -1081,7 +1089,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "888604f00b3db336d2af898ec3c1d5d0ddf5e6d462220f2ededc33a87ac4bbd5"
 dependencies = [
- "time 0.1.43",
+ "time 0.1.44",
  "url 1.7.2",
 ]
 
@@ -1115,7 +1123,7 @@ dependencies = [
  "publicsuffix",
  "serde",
  "serde_json",
- "time 0.1.43",
+ "time 0.1.44",
  "try_from",
  "url 1.7.2",
 ]
@@ -1272,7 +1280,7 @@ dependencies = [
 [[package]]
 name = "curve"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
 dependencies = [
  "math",
 ]
@@ -1766,7 +1774,7 @@ checksum = "7abc8dd8451921606d809ba32e95b6111925cd2906060d2dcc29c070220503eb"
 dependencies = [
  "cfg-if",
  "libc",
- "wasi",
+ "wasi 0.9.0+wasi-snapshot-preview1",
 ]
 
 [[package]]
@@ -2027,7 +2035,7 @@ dependencies = [
  "log",
  "net2",
  "rustc_version",
- "time 0.1.43",
+ "time 0.1.44",
  "tokio 0.1.22",
  "tokio-buf",
  "tokio-executor",
@@ -2056,7 +2064,7 @@ dependencies = [
  "itoa",
  "pin-project",
  "socket2",
- "time 0.1.43",
+ "time 0.1.44",
  "tokio 0.2.22",
  "tower-service",
  "tracing",
@@ -2350,7 +2358,7 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "math"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
 dependencies = [
  "derivative",
  "math-derive",
@@ -2363,7 +2371,7 @@ dependencies = [
 [[package]]
 name = "math-derive"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
@@ -3218,7 +3226,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.5.5",
- "time 0.1.43",
+ "time 0.1.44",
  "tokio 0.1.22",
  "tokio-executor",
  "tokio-io",
@@ -3346,7 +3354,7 @@ dependencies = [
 [[package]]
 name = "scheme"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#68703503f832aa98a427e9e2a0a8245896251e2f"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#27db4645ad19cbd5380348d8447b4cf38bede197"
 dependencies = [
  "curve",
  "digest 0.8.1",
@@ -4003,11 +4011,12 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
 dependencies = [
  "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi 0.3.9",
 ]
 
@@ -4460,9 +4469,9 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 
 [[package]]
 name = "waker-fn"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9571542c2ce85ce642e6b58b3364da2fb53526360dfb7c211add4f5c23105ff7"
+checksum = "9d5b2c62b4012a3e1eca5a7e077d13b3bf498c4073e33ccd58626607748ceeca"
 
 [[package]]
 name = "walkdir"
@@ -4501,6 +4510,12 @@ name = "wasi"
 version = "0.9.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
+
+[[package]]
+name = "wasi"
+version = "0.10.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"
