@@ -4,6 +4,7 @@ members = [
     "rollup",
     "mock",
     "asvc_rollup",
+    "ckb_rpc",
 ]
 exclude = [
     "contracts",

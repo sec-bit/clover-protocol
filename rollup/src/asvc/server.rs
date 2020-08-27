@@ -17,7 +17,9 @@ mod storage;
 use asvc::initialize_asvc;
 use storage::Storage;
 
+use asvc_rollup::block::Block;
 use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
+use ckb_rpc::{listen_blocks, send_block, send_deposit, send_withdraw};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -33,10 +35,15 @@ async fn listen_contracts<E: PairingEngine>(
             l1_block_height
         );
 
-        // TODO
-        l1_block_height += 1;
+        if let Ok((blocks, new_height)) = listen_blocks(l1_block_height).await {
+            for bytes in blocks {
+                if let Ok(block) = Block::from_bytes(&bytes[..]) {
+                    s.lock().await.handle_block(block);
+                }
+            }
 
-        // TODO s.lock().await.handle_block(block);
+            l1_block_height = new_height;
+        }
 
         println!(
             "Listen Task: end read block's txs. Current block height: {}",
@@ -63,16 +70,9 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
                     &storage.lock().await.params.proving_key.update_keys
                 )
             );
-            continue;
 
-            if let Ok(mut res) = surf::post("http://127.0.0.1:8000/block")
-                .body_string(block.to_hex())
-                .await
-            {
-                println!(
-                    "block send L1 is success: {}",
-                    res.body_string().await.unwrap_or("None".to_owned())
-                );
+            if let Ok(res) = send_block(block.to_bytes()).await {
+                println!("block send L1 is success: tx: {}", res);
                 storage.lock().await.handle_block(block);
             } else {
                 storage.lock().await.revert_block(block);
@@ -152,10 +152,13 @@ async fn deposit<E: PairingEngine>(
 
     let tx_hash_id = tx.id();
 
-    if let Some(_block) = req.state().lock().await.build_block(vec![tx]) {
-        // TODO build depost transaction & send to ckb
+    if let Some(block) = req.state().lock().await.build_block(vec![tx]) {
+        if let Ok(res) = send_deposit(block.to_bytes()).await {
+            println!("Send CKB Tx: {}", res);
+            return Ok(tx_hash_id);
+        }
 
-        Ok(tx_hash_id)
+        Ok("Send Tx Failure".to_owned())
     } else {
         Ok("Invalid Tx".to_owned())
     }
@@ -203,10 +206,13 @@ async fn withdraw<E: PairingEngine>(
 
     let tx_hash_id = tx.id();
 
-    if let Some(_block) = req.state().lock().await.build_block(vec![tx]) {
-        // TODO build withdraw transaction & send to ckb
+    if let Some(block) = req.state().lock().await.build_block(vec![tx]) {
+        if let Ok(res) = send_withdraw(block.to_bytes()).await {
+            println!("Send CKB Tx: {}", res);
+            return Ok(tx_hash_id);
+        }
 
-        Ok(tx_hash_id)
+        Ok("Send Tx Failure".to_owned())
     } else {
         Ok("Invalid Tx".to_owned())
     }

@@ -334,7 +334,7 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     /// if send to L1 failure, revert the block's txs.
-    pub fn revert_block(&mut self, block: Block<E>) {
+    pub fn revert_block(&mut self, _block: Block<E>) {
         todo!()
     }
 }

@@ -1045,6 +1045,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckb_rpc"
+version = "0.1.0"
+dependencies = [
+ "ckb-tool",
+ "serde",
+ "serde_json",
+ "surf",
+]
+
+[[package]]
 name = "clap"
 version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2548,17 +2558,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-bigint"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
-dependencies = [
- "autocfg 1.0.1",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3295,14 +3294,12 @@ version = "0.1.0"
 dependencies = [
  "asvc_rollup",
  "async-std",
- "ckb-tool",
  "ckb-zkp",
+ "ckb_rpc",
  "hex",
- "num-bigint",
  "rand 0.7.3",
  "serde",
  "serde_json",
- "surf",
  "tide",
 ]
 

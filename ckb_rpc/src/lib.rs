@@ -23,9 +23,7 @@ fn jsonrpc(method: &str, params: Vec<&str>) -> Value {
     )
 }
 
-pub struct Tx;
-
-pub async fn query_block_deposits(block_height: u64) -> Result<(Vec<Tx>, u64), ()> {
+pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
     //get_tip_block_number
     let now_height = match surf::post(NODE_RPC_ADDR)
         .body_json(&jsonrpc("get_tip_block_number", vec![]))
@@ -55,7 +53,7 @@ pub async fn query_block_deposits(block_height: u64) -> Result<(Vec<Tx>, u64), (
         return Ok((vec![], block_height));
     }
 
-    let mut deposit_txs = vec![];
+    let mut blocks = vec![];
     let mut change_block_height = block_height;
 
     for i in block_height..now_height {
@@ -89,7 +87,7 @@ pub async fn query_block_deposits(block_height: u64) -> Result<(Vec<Tx>, u64), (
         }
     }
 
-    Ok((deposit_txs, block_height))
+    Ok((blocks, block_height))
 }
 
 /// asvc rollup contract address.
@@ -132,7 +130,10 @@ pub async fn init_state(prev: String, contract: String, script: String) -> Resul
     send_tx(tx).await
 }
 
-pub async fn post_block(prev: String, contract: String) -> Result<String, ()> {
+pub async fn post_block(_block: Vec<u8>, prev: String) -> Result<String, ()> {
+    let prev = "TODO";
+    let contract = "TODO";
+
     let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
     let lock_point = OutPoint::new_unchecked(Bytes::from(contract.clone()));
     let lock_script_point = Script::new_unchecked(Bytes::from(contract));
@@ -158,12 +159,22 @@ pub async fn post_block(prev: String, contract: String) -> Result<String, ()> {
     send_tx(tx).await
 }
 
-pub async fn user_deposit(prev: String, asset: String) -> Result<String, ()> {
-    todo!()
+pub async fn send_deposit(_block: Vec<u8>) -> Result<String, ()> {
+    println!("TODO send deposit tx to CKB");
+
+    Ok("TODO".to_owned())
 }
 
-pub async fn user_withdraw() -> Result<String, ()> {
-    todo!()
+pub async fn send_withdraw(_block: Vec<u8>) -> Result<String, ()> {
+    println!("TODO send withdraw tx to CKB");
+
+    Ok("TODO".to_owned())
+}
+
+pub async fn send_block(_block: Vec<u8>) -> Result<String, ()> {
+    println!("TODO send block tx to CKB");
+
+    Ok("TODO".to_owned())
 }
 
 async fn send_tx(tx: TransactionView) -> Result<String, ()> {
