@@ -17,7 +17,7 @@ use storage::Storage;
 
 use asvc_rollup::block::Block;
 use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
-use ckb_rpc::{listen_blocks, send_block, send_deposit, send_withdraw};
+use ckb_rpc::{init_state, listen_blocks, send_block, send_deposit, send_withdraw};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -272,13 +272,23 @@ async fn transfer<E: PairingEngine>(
     }
 }
 
+/// wallet transfer api. build tx and send to ckb.
+async fn setup<E: PairingEngine>(req: Request<Arc<Mutex<Storage<E>>>>) -> Result<String, Error> {
+    //let from_fpk = req.state().lock().await.user_fpk(from);
+
+    // send init state to chain.
+    if let Ok(res) = init_state().await {
+        Ok(res)
+    } else {
+        Ok("Init Failure".to_owned())
+    }
+}
+
 fn main() {
     let (params, commit, proofs, full_pubkeys) = match initialize_asvc::<Bn_256>(ACCOUNT_SIZE) {
         Ok(result) => result,
         Err(error) => panic!("Problem initializing asvc: {:?}", error),
     };
-
-    // TODO: submit to contract
 
     // mock storage
     let storage = Storage::<Bn_256>::init(params, commit, proofs, full_pubkeys);
@@ -299,7 +309,7 @@ fn main() {
     app.at("/transfer").post(transfer);
 
     // L2 service
-    //app.at("/send_tx").post(send_tx);
+    app.at("/setup").post(setup);
     app.at("/register").post(register);
 
     task::block_on(app.listen("127.0.0.1:8001")).unwrap();

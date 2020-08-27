@@ -103,7 +103,11 @@ const MERKLETREE_CONTRACT_HASH: &'static str = "0x";
 const MERKLETREE_ASSET_HASH: &'static str = "0x";
 
 /// init state of L2
-pub async fn init_state(prev: String, contract: String, script: String) -> Result<String, ()> {
+pub async fn init_state() -> Result<String, ()> {
+    let prev = "";
+    let contract = "";
+    let script = "";
+
     let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
     let lock_cell_point = OutPoint::new_unchecked(Bytes::from(contract));
     let dep_point = CellDep::new_builder().out_point(lock_cell_point).build();
