@@ -20,7 +20,7 @@ fn jsonrpc(method: &str, params: Value) -> Value {
     )
 }
 
-pub async fn deploy_contract(name: &str) -> Result<(String, String, String), ()> {
+pub async fn deploy_contract(name: &str) -> Result<(String, String, String, String), ()> {
     match surf::post(format!("{}/deploy", NODE_RPC_ADDR))
         .body_json(&json!({ "contract": name }))
         .map_err(|_e| ())?
@@ -32,11 +32,13 @@ pub async fn deploy_contract(name: &str) -> Result<(String, String, String), ()>
                 let rollup_lock = result[0].as_str().ok_or(())?;
                 let rollup_lock_dep = result[1].as_str().ok_or(())?;
                 let udt_lock = result[2].as_str().ok_or(())?;
+                let my_udt = result[3].as_str().ok_or(())?;
 
                 Ok((
                     rollup_lock.to_owned(),
                     rollup_lock_dep.to_owned(),
                     udt_lock.to_owned(),
+                    my_udt.to_owned(),
                 ))
             }
             Err(err) => {
@@ -51,7 +53,12 @@ pub async fn deploy_contract(name: &str) -> Result<(String, String, String), ()>
     }
 }
 
-pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
+pub async fn listen_blocks(
+    block_height: u64,
+    rollup_hash: &String,
+) -> Result<(Vec<(Vec<u8>, String, String, Option<(String, u128)>)>, u64), ()> {
+    let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
+
     //get_tip_block_number
     let now_height = match surf::post(NODE_RPC_ADDR)
         .body_json(&jsonrpc("get_tip_block_number", Default::default()))
@@ -84,6 +91,8 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
     let mut change_block_height = block_height;
 
     for i in block_height..now_height {
+        change_block_height = i;
+
         // get block info
         if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
             .body_json(&jsonrpc("get_block", json!(vec![i])))
@@ -91,18 +100,48 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
             .await
         {
             let result = res.body_json::<Value>().await.map_err(|_| ())?;
-            let transactions = result["result"]["transactions"].as_array().ok_or(())?;
+            let transactions = result["result"].as_array().ok_or(())?;
 
             for tx in transactions {
-                println!("{:?}", tx);
-                // TODO CHECK Tx is to our contract.
+                let tx =
+                    TransactionView::from_slice(&hex::decode(tx.as_str().unwrap()).unwrap()[..])
+                        .unwrap()
+                        .unpack();
+
+                let tx_hash = tx.hash();
+
+                if let Some(out) = tx.outputs().get(0) {
+                    if out.lock() == rollup_lock {
+                        let block_data = tx.outputs_data().get(0).unwrap().as_slice().to_vec();
+                        let commit_cell_point =
+                            hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice());
+                        let upk_cell_point =
+                            hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice());
+                        let udt_cell = match block_data[0] {
+                            1u8 | 2u8 => {
+                                let upt_cell = tx.outputs().get(2).unwrap();
+                                let mut u128_bytes = [0u8; 16];
+                                u128_bytes
+                                    .copy_from_slice(tx.outputs_data().get(2).unwrap().as_slice());
+                                let amount = u128::from_le_bytes(u128_bytes);
+                                let udt_cell_point =
+                                    hex::encode(OutPoint::new(tx_hash, 2u32).as_slice());
+
+                                Some((udt_cell_point, amount))
+                            }
+                            _ => None,
+                        };
+
+                        blocks.push((block_data, commit_cell_point, upk_cell_point, udt_cell))
+                    }
+                }
             }
         } else {
             break;
         }
     }
 
-    Ok((blocks, block_height))
+    Ok((blocks, change_block_height))
 }
 
 pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
@@ -160,7 +199,7 @@ pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64
                 let result = res.body_json::<Value>().await.map_err(|_| ())?;
                 let transactions = result["result"]["transactions"].as_array().ok_or(())?;
 
-                for tx in transactions {
+                for _tx in transactions {
                     //println!("{:?}", tx);
                     // TODO CHECK Tx is to our contract.
                 }
@@ -225,10 +264,12 @@ pub async fn init_state(
         .cell_dep(rollup_dep)
         .build();
 
+    let tx_hash = tx.hash();
+
     Ok((
-        hex::encode(init_output_commit.as_slice()),
-        hex::encode(init_upk.as_slice()),
-        hex::encode(init_udt.as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
         send_tx(tx.pack()).await?,
     ))
 }
@@ -262,22 +303,216 @@ pub async fn post_block(_block: Vec<u8>, prev: String) -> Result<String, ()> {
     send_tx(tx.pack()).await
 }
 
-pub async fn send_deposit(_block: Vec<u8>) -> Result<String, ()> {
-    println!("TODO send deposit tx to CKB");
+pub async fn send_deposit(
+    rollup_hash: &String,
+    rollup_dep_hash: &String,
+    success_hash: &String,
+    my_udt_hash: &String,
+    pre_commit_hash: &String,
+    pre_upk_hash: &String,
+    pre_udt_hash: &String,
+    block: Vec<u8>,
+    upks: Vec<Vec<u8>>,
+    udt_amount: u128,
+    my_udt_amount: u128,
+) -> Result<(String, String, String, String, String), ()> {
+    let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
+    let rollup_dep = CellDep::new_unchecked(hex::decode(rollup_dep_hash).unwrap().into());
+    let success_lock = Script::new_unchecked(hex::decode(success_hash).unwrap().into());
+    let my_udt = OutPoint::new_unchecked(hex::decode(my_udt_hash).unwrap().into());
 
-    Ok("TODO".to_owned())
+    let pre_commit = OutPoint::new_unchecked(hex::decode(pre_commit_hash).unwrap().into());
+    let pre_upk = OutPoint::new_unchecked(hex::decode(pre_upk_hash).unwrap().into());
+    let pre_udt = OutPoint::new_unchecked(hex::decode(pre_udt_hash).unwrap().into());
+
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+
+    let udt_input = CellInput::new_builder().previous_output(my_udt).build();
+
+    let deposit_commit_input = CellInput::new_builder().previous_output(pre_commit).build();
+    let deposit_upk_input = CellInput::new_builder().previous_output(pre_upk).build();
+    let deposit_udt_input = CellInput::new_builder().previous_output(pre_udt).build();
+
+    let commit_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let upk_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let udt_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock)
+        .build();
+    let my_udt = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(success_lock)
+        .build();
+
+    let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
+    for mut upk in upks {
+        all_upks.extend_from_slice(&mut upk[..]);
+    }
+
+    let deposit_outputs_data: Vec<Bytes> = vec![
+        block.into(),
+        all_upks.into(),
+        udt_amount.to_le_bytes().to_vec().into(),
+        my_udt_amount.to_le_bytes().to_vec().into(),
+    ];
+
+    let tx = TransactionBuilder::default()
+        .inputs(vec![
+            deposit_commit_input,
+            deposit_upk_input,
+            deposit_udt_input,
+            udt_input,
+        ])
+        .outputs(vec![commit_cell, upk_cell, udt_cell, my_udt])
+        .outputs_data(deposit_outputs_data.pack())
+        .cell_dep(rollup_dep)
+        .build();
+
+    let tx_hash = tx.hash();
+
+    Ok((
+        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 3u32).as_slice()),
+        send_tx(tx.pack()).await?,
+    ))
 }
 
-pub async fn send_withdraw(_block: Vec<u8>) -> Result<String, ()> {
-    println!("TODO send withdraw tx to CKB");
+pub async fn send_withdraw(
+    rollup_hash: &String,
+    rollup_dep_hash: &String,
+    success_hash: &String,
+    pre_commit_hash: &String,
+    pre_upk_hash: &String,
+    pre_udt_hash: &String,
+    block: Vec<u8>,
+    upks: Vec<Vec<u8>>,
+    udt_amount: u128,
+    amount: u128,
+) -> Result<(String, String, String, String), ()> {
+    let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
+    let rollup_dep = CellDep::new_unchecked(hex::decode(rollup_dep_hash).unwrap().into());
+    let success_lock = Script::new_unchecked(hex::decode(success_hash).unwrap().into());
 
-    Ok("TODO".to_owned())
+    let pre_commit = OutPoint::new_unchecked(hex::decode(pre_commit_hash).unwrap().into());
+    let pre_upk = OutPoint::new_unchecked(hex::decode(pre_upk_hash).unwrap().into());
+    let pre_udt = OutPoint::new_unchecked(hex::decode(pre_udt_hash).unwrap().into());
+
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+
+    let withdraw_commit_input = CellInput::new_builder().previous_output(pre_commit).build();
+    let withdraw_upk_input = CellInput::new_builder().previous_output(pre_upk).build();
+    let withdraw_udt_input = CellInput::new_builder().previous_output(pre_udt).build();
+
+    let commit_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let upk_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let udt_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock)
+        .build();
+    let my_udt = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(success_lock)
+        .build();
+
+    let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
+    for mut upk in upks {
+        all_upks.extend_from_slice(&mut upk[..]);
+    }
+
+    let withdraw_outputs_data: Vec<Bytes> = vec![
+        block.into(),
+        all_upks.into(),
+        udt_amount.to_le_bytes().to_vec().into(),
+        amount.to_le_bytes().to_vec().into(),
+    ];
+
+    let tx = TransactionBuilder::default()
+        .inputs(vec![
+            withdraw_commit_input,
+            withdraw_upk_input,
+            withdraw_udt_input,
+        ])
+        .outputs(vec![commit_cell, upk_cell, udt_cell, my_udt])
+        .outputs_data(withdraw_outputs_data.pack())
+        .cell_dep(rollup_dep)
+        .build();
+
+    let tx_hash = tx.hash();
+
+    Ok((
+        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
+        send_tx(tx.pack()).await?,
+    ))
 }
 
-pub async fn send_block(_block: Vec<u8>) -> Result<String, ()> {
-    println!("TODO send block tx to CKB");
+pub async fn send_block(
+    rollup_hash: &String,
+    rollup_dep_hash: &String,
+    pre_commit_hash: &String,
+    pre_upk_hash: &String,
+    block: Vec<u8>,
+    upks: Vec<Vec<u8>>,
+) -> Result<(String, String, String), ()> {
+    let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
+    let rollup_dep = CellDep::new_unchecked(hex::decode(rollup_dep_hash).unwrap().into());
 
-    Ok("TODO".to_owned())
+    let pre_commit = OutPoint::new_unchecked(hex::decode(pre_commit_hash).unwrap().into());
+    let pre_upk = OutPoint::new_unchecked(hex::decode(pre_upk_hash).unwrap().into());
+
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+
+    let commit_input = CellInput::new_builder().previous_output(pre_commit).build();
+    let upk_input = CellInput::new_builder().previous_output(pre_upk).build();
+
+    let commit_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let upk_cell = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+
+    let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
+    for mut upk in upks {
+        all_upks.extend_from_slice(&mut upk[..]);
+    }
+
+    let outputs_data: Vec<Bytes> = vec![block.into(), all_upks.into()];
+
+    let tx = TransactionBuilder::default()
+        .inputs(vec![commit_input, upk_input])
+        .outputs(vec![commit_cell, upk_cell])
+        .outputs_data(outputs_data.pack())
+        .cell_dep(rollup_dep)
+        .build();
+
+    let tx_hash = tx.hash();
+
+    Ok((
+        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
+        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
+        send_tx(tx.pack()).await?,
+    ))
 }
 
 async fn send_tx(tx: TransactionView) -> Result<String, ()> {

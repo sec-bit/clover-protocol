@@ -8,7 +8,7 @@ use std::time::Duration;
 use tide::{Body, Error, Request, Response};
 
 use ckb_testtool::{builtin::ALWAYS_SUCCESS, context::Context};
-use ckb_tool::ckb_types::{bytes::Bytes, packed::*, prelude::*};
+use ckb_tool::ckb_types::{bytes::Bytes, core::Capacity, packed::*, prelude::*};
 
 const MAX_CYCLES: u64 = 10_000_000;
 
@@ -60,11 +60,22 @@ async fn deploy(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Er
         .expect("script");
     let rollup_lock_script_dep = CellDep::new_builder().out_point(rollup_point).build();
 
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+    // init UDT 100,000
+    let my_udt_point = blockchain.context.create_cell(
+        CellOutput::new_builder()
+            .capacity(input_ckb.pack())
+            .lock(success_lock_script.clone())
+            .build(),
+        100000u128.to_le_bytes().to_vec().into(),
+    );
+
     let mut res = Response::new(200);
     res.set_body(Body::from_json(&jsonrpc(json!(vec![
         hex::encode(rollup_lock_script.as_slice()),
         hex::encode(rollup_lock_script_dep.as_slice()),
         hex::encode(success_lock_script.as_slice()),
+        hex::encode(my_udt_point.as_slice())
     ])))?);
 
     Ok(res)

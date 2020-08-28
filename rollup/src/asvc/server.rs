@@ -23,7 +23,7 @@ use ckb_rpc::{
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
-    s: Arc<Mutex<Storage<E>>>,
+    storage: Arc<Mutex<Storage<E>>>,
 ) -> Result<(), std::io::Error> {
     let mut l1_block_height = 0;
 
@@ -35,10 +35,19 @@ async fn listen_contracts<E: PairingEngine>(
             l1_block_height
         );
 
-        if let Ok((blocks, new_height)) = listen_blocks(l1_block_height).await {
-            for bytes in blocks {
+        let rollup_lock = &storage.lock().await.rollup_lock;
+
+        if let Ok((blocks, new_height)) = listen_blocks(l1_block_height, rollup_lock).await {
+            for (bytes, new_commit, new_upk, is_new_udt) in blocks {
                 if let Ok(block) = Block::from_bytes(&bytes[..]) {
-                    s.lock().await.handle_block(block);
+                    storage.lock().await.handle_block(block);
+
+                    storage.lock().await.commit_cell = new_commit;
+                    storage.lock().await.upk_cell = new_upk;
+                    if let Some((new_udt, amount)) = is_new_udt {
+                        storage.lock().await.udt_cell = new_udt;
+                        storage.lock().await.total_udt_amount = amount;
+                    }
                 }
             }
 
@@ -70,9 +79,33 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
                     &storage.lock().await.params.proving_key.update_keys
                 )
             );
+            let rollup_hash: &String = &storage.lock().await.rollup_lock;
+            let rollup_dep_hash: &String = &storage.lock().await.rollup_dep;
+            let pre_commit_hash: &String = &storage.lock().await.commit_cell;
+            let pre_upk_hash: &String = &storage.lock().await.upk_cell;
+            let block_bytes: Vec<u8> = block.to_bytes();
 
-            if let Ok(res) = send_block(block.to_bytes()).await {
-                println!("block send L1 is success: tx: {}", res);
+            let mut upks = vec![];
+            for upk in &storage.lock().await.params.proving_key.update_keys {
+                let mut tmp_bytes = vec![];
+                upk.write(&mut tmp_bytes).unwrap();
+                upks.push(tmp_bytes);
+            }
+
+            if let Ok((new_commit_cell, new_upk_cell, tx_id)) = send_block(
+                rollup_hash,
+                rollup_dep_hash,
+                pre_commit_hash,
+                pre_upk_hash,
+                block_bytes,
+                upks,
+            )
+            .await
+            {
+                storage.lock().await.commit_cell = new_commit_cell;
+                storage.lock().await.upk_cell = new_upk_cell;
+
+                println!("block send L1 is success: tx: {}", tx_id);
                 storage.lock().await.handle_block(block);
             } else {
                 storage.lock().await.revert_block(block);
@@ -150,15 +183,50 @@ async fn deposit<E: PairingEngine>(
 
     let tx = Transaction::<E>::new_deposit(from, amount, fpk, nonce, balance, proof, &sk);
 
-    let tx_hash_id = tx.id();
-
     if let Some(block) = req.state().lock().await.build_block(vec![tx]) {
-        if let Ok(res) = send_deposit(block.to_bytes()).await {
-            println!("Send CKB Tx: {}", res);
-            return Ok(tx_hash_id);
+        let rollup_hash: &String = &req.state().lock().await.rollup_lock;
+        let rollup_dep_hash: &String = &req.state().lock().await.rollup_dep;
+        let success_hash: &String = &req.state().lock().await.udt_lock;
+        let my_udt_hash: &String = &req.state().lock().await.my_udt;
+        let pre_commit_hash: &String = &req.state().lock().await.commit_cell;
+        let pre_upk_hash: &String = &req.state().lock().await.upk_cell;
+        let pre_udt_hash: &String = &req.state().lock().await.udt_cell;
+        let block: Vec<u8> = block.to_bytes();
+        let udt_amount: u128 = req.state().lock().await.total_udt_amount + amount;
+        let my_udt_amount: u128 = req.state().lock().await.my_udt_amount - amount;
+
+        let mut upks = vec![];
+        for upk in &req.state().lock().await.params.proving_key.update_keys {
+            let mut tmp_bytes = vec![];
+            upk.write(&mut tmp_bytes).unwrap();
+            upks.push(tmp_bytes);
         }
 
-        Ok("Send Tx Failure".to_owned())
+        if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, new_my_udt, tx_id)) = send_deposit(
+            rollup_hash,
+            rollup_dep_hash,
+            success_hash,
+            my_udt_hash,
+            pre_commit_hash,
+            pre_upk_hash,
+            pre_udt_hash,
+            block,
+            upks,
+            udt_amount,
+            my_udt_amount,
+        )
+        .await
+        {
+            req.state().lock().await.commit_cell = new_commit_cell;
+            req.state().lock().await.upk_cell = new_upk_cell;
+            req.state().lock().await.udt_cell = new_udt_cell;
+            req.state().lock().await.my_udt = new_my_udt;
+            req.state().lock().await.my_udt_amount -= amount;
+
+            Ok(tx_id)
+        } else {
+            Ok("Send Tx Failure".to_owned())
+        }
     } else {
         Ok("Invalid Tx".to_owned())
     }
@@ -204,15 +272,46 @@ async fn withdraw<E: PairingEngine>(
 
     let tx = Transaction::<E>::new_withdraw(from, amount, fpk, nonce, balance, proof, &sk);
 
-    let tx_hash_id = tx.id();
-
     if let Some(block) = req.state().lock().await.build_block(vec![tx]) {
-        if let Ok(res) = send_withdraw(block.to_bytes()).await {
-            println!("Send CKB Tx: {}", res);
-            return Ok(tx_hash_id);
+        let rollup_hash: &String = &req.state().lock().await.rollup_lock;
+        let rollup_dep_hash: &String = &req.state().lock().await.rollup_dep;
+        let success_hash: &String = &req.state().lock().await.udt_lock;
+        let pre_commit_hash: &String = &req.state().lock().await.commit_cell;
+        let pre_upk_hash: &String = &req.state().lock().await.upk_cell;
+        let pre_udt_hash: &String = &req.state().lock().await.udt_cell;
+        let block: Vec<u8> = block.to_bytes();
+        let udt_amount: u128 = req.state().lock().await.total_udt_amount - amount;
+        let my_udt_amount: u128 = amount;
+
+        let mut upks = vec![];
+        for upk in &req.state().lock().await.params.proving_key.update_keys {
+            let mut tmp_bytes = vec![];
+            upk.write(&mut tmp_bytes).unwrap();
+            upks.push(tmp_bytes);
         }
 
-        Ok("Send Tx Failure".to_owned())
+        if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, tx_id)) = send_withdraw(
+            rollup_hash,
+            rollup_dep_hash,
+            success_hash,
+            pre_commit_hash,
+            pre_upk_hash,
+            pre_udt_hash,
+            block,
+            upks,
+            udt_amount,
+            my_udt_amount,
+        )
+        .await
+        {
+            req.state().lock().await.commit_cell = new_commit_cell;
+            req.state().lock().await.upk_cell = new_upk_cell;
+            req.state().lock().await.udt_cell = new_udt_cell;
+
+            Ok(tx_id)
+        } else {
+            Ok("Send Tx Failure".to_owned())
+        }
     } else {
         Ok("Invalid Tx".to_owned())
     }
@@ -277,15 +376,18 @@ async fn transfer<E: PairingEngine>(
 /// wallet transfer api. build tx and send to ckb.
 async fn setup<E: PairingEngine>(req: Request<Arc<Mutex<Storage<E>>>>) -> Result<String, Error> {
     //let from_fpk = req.state().lock().await.user_fpk(from);
-    let (rollup_lock, rollup_dep, udt_lock) = deploy_contract("asvc_rollup").await.unwrap();
+    let (rollup_lock, rollup_dep, udt_lock, my_udt) = deploy_contract("asvc_rollup").await.unwrap();
 
     println!("ASVC rollup lock: {}", rollup_lock);
     println!("ASVC rollup lock dep: {}", rollup_dep);
     println!("ASVC udt lock: {}", udt_lock);
+    println!("ASVC my udt ouput: {}", my_udt);
 
     req.state().lock().await.rollup_lock = rollup_lock.clone();
     req.state().lock().await.rollup_dep = rollup_dep.clone();
     req.state().lock().await.udt_lock = udt_lock;
+    req.state().lock().await.my_udt = my_udt;
+    req.state().lock().await.my_udt_amount = 100000;
 
     let mut commit_bytes = vec![];
     req.state()
