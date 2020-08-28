@@ -426,6 +426,7 @@ impl<E: PairingEngine> Storage<E> {
 
     /// handle when the block commit to L1.
     pub fn handle_block(&mut self, block: Block<E>) {
+        println!("HANDLE BLOCK: {}", block.block_height);
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;

@@ -92,10 +92,11 @@ pub async fn listen_blocks(
 
     for i in block_height..now_height {
         change_block_height = i;
+        println!("START GOT BLOCK: {}", change_block_height);
 
         // get block info
         if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
-            .body_json(&jsonrpc("get_block", json!(vec![i])))
+            .body_json(&jsonrpc("get_block", json!(vec![format!("{}", i)])))
             .map_err(|_e| ())?
             .await
         {
@@ -112,12 +113,12 @@ pub async fn listen_blocks(
 
                 if let Some(out) = tx.outputs().get(0) {
                     if out.lock() == rollup_lock {
-                        let block_data = tx.outputs_data().get(0).unwrap().as_slice().to_vec();
+                        let mut block_data = tx.outputs_data().get(0).unwrap().as_slice().to_vec();
                         let commit_cell_point =
                             hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice());
                         let upk_cell_point =
                             hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice());
-                        let udt_cell = match block_data[0] {
+                        let udt_cell = match block_data.remove(0) {
                             1u8 | 2u8 => {
                                 let mut u128_bytes = [0u8; 16];
                                 u128_bytes
@@ -136,6 +137,7 @@ pub async fn listen_blocks(
                 }
             }
         } else {
+            println!("ERROR------------");
             break;
         }
     }
@@ -218,6 +220,8 @@ pub async fn init_state(
     rollup_hash: String,
     rollup_dep_hash: String,
     mut commit: Vec<u8>,
+    mut vk: Vec<u8>,
+    mut omega: Vec<u8>,
     upks: Vec<Vec<u8>>,
 ) -> Result<(String, String, String, String), ()> {
     let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
@@ -238,16 +242,20 @@ pub async fn init_state(
         .lock(rollup_lock.clone())
         .build();
 
-    commit.extend_from_slice(&mut 0u32.to_le_bytes()[..]);
+    let mut true_commit = vec![0u8];
+    true_commit.extend_from_slice(&mut commit[..]);
+    true_commit.extend_from_slice(&mut 0u32.to_le_bytes()[..]);
 
     let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut vk[..]);
+    all_upks.extend_from_slice(&mut omega[..]);
     all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
     for mut upk in upks {
         all_upks.extend_from_slice(&mut upk[..]);
     }
 
     let init_outputs_data: Vec<Bytes> = vec![
-        commit.into(),
+        true_commit.into(),
         all_upks.into(),
         0u128.to_le_bytes().to_vec().into(),
     ];
@@ -273,35 +281,6 @@ pub async fn init_state(
     ))
 }
 
-pub async fn post_block(_block: Vec<u8>, prev: String) -> Result<String, ()> {
-    let prev = "TODO";
-    let contract = "TODO";
-
-    let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
-    let lock_point = OutPoint::new_unchecked(Bytes::from(contract.clone()));
-    let lock_script_point = Script::new_unchecked(Bytes::from(contract));
-    let dep_point = CellDep::new_builder().out_point(lock_point).build();
-
-    let input = CellInput::new_builder().previous_output(prev_point).build();
-
-    let output = CellOutput::new_builder()
-        .capacity(500u64.pack())
-        .lock(lock_script_point)
-        .build();
-
-    let outputs_data = vec![Bytes::new(); 2];
-
-    // build transaction
-    let tx = TransactionBuilder::default()
-        .inputs(vec![input])
-        .outputs(vec![output])
-        .outputs_data(outputs_data.pack())
-        .cell_dep(dep_point)
-        .build();
-
-    send_tx(tx.pack()).await
-}
-
 pub async fn send_deposit(
     rollup_hash: &String,
     rollup_dep_hash: &String,
@@ -310,7 +289,9 @@ pub async fn send_deposit(
     pre_commit_hash: &String,
     pre_upk_hash: &String,
     pre_udt_hash: &String,
-    block: Vec<u8>,
+    mut commit: Vec<u8>,
+    mut vk: Vec<u8>,
+    mut omega: Vec<u8>,
     upks: Vec<Vec<u8>>,
     udt_amount: u128,
     my_udt_amount: u128,
@@ -350,13 +331,18 @@ pub async fn send_deposit(
         .build();
 
     let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut vk[..]);
+    all_upks.extend_from_slice(&mut omega[..]);
     all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
     for mut upk in upks {
         all_upks.extend_from_slice(&mut upk[..]);
     }
 
+    let mut true_commit = vec![1u8];
+    true_commit.extend_from_slice(&mut commit[..]);
+
     let deposit_outputs_data: Vec<Bytes> = vec![
-        block.into(),
+        true_commit.into(),
         all_upks.into(),
         udt_amount.to_le_bytes().to_vec().into(),
         my_udt_amount.to_le_bytes().to_vec().into(),
@@ -392,7 +378,9 @@ pub async fn send_withdraw(
     pre_commit_hash: &String,
     pre_upk_hash: &String,
     pre_udt_hash: &String,
-    block: Vec<u8>,
+    mut commit: Vec<u8>,
+    mut vk: Vec<u8>,
+    mut omega: Vec<u8>,
     upks: Vec<Vec<u8>>,
     udt_amount: u128,
     amount: u128,
@@ -429,13 +417,18 @@ pub async fn send_withdraw(
         .build();
 
     let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut vk[..]);
+    all_upks.extend_from_slice(&mut omega[..]);
     all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
     for mut upk in upks {
         all_upks.extend_from_slice(&mut upk[..]);
     }
 
+    let mut true_commit = vec![2u8];
+    true_commit.extend_from_slice(&mut commit[..]);
+
     let withdraw_outputs_data: Vec<Bytes> = vec![
-        block.into(),
+        true_commit.into(),
         all_upks.into(),
         udt_amount.to_le_bytes().to_vec().into(),
         amount.to_le_bytes().to_vec().into(),
@@ -467,7 +460,9 @@ pub async fn send_block(
     rollup_dep_hash: &String,
     pre_commit_hash: &String,
     pre_upk_hash: &String,
-    block: Vec<u8>,
+    mut commit: Vec<u8>,
+    mut vk: Vec<u8>,
+    mut omega: Vec<u8>,
     upks: Vec<Vec<u8>>,
 ) -> Result<(String, String, String), ()> {
     let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
@@ -491,12 +486,17 @@ pub async fn send_block(
         .build();
 
     let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut vk[..]);
+    all_upks.extend_from_slice(&mut omega[..]);
     all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
     for mut upk in upks {
         all_upks.extend_from_slice(&mut upk[..]);
     }
 
-    let outputs_data: Vec<Bytes> = vec![block.into(), all_upks.into()];
+    let mut true_commit = vec![0u8];
+    true_commit.extend_from_slice(&mut commit[..]);
+
+    let outputs_data: Vec<Bytes> = vec![true_commit.into(), all_upks.into()];
 
     let tx = TransactionBuilder::default()
         .inputs(vec![commit_input, upk_input])

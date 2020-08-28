@@ -85,6 +85,9 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
             let pre_upk_hash: &String = &storage.lock().await.upk_cell;
             let block_bytes: Vec<u8> = block.to_bytes();
 
+            let mut omega = vec![];
+            storage.lock().await.omega.write(&mut omega).unwrap();
+
             let mut upks = vec![];
             for upk in &storage.lock().await.params.proving_key.update_keys {
                 let mut tmp_bytes = vec![];
@@ -92,12 +95,23 @@ async fn miner<E: PairingEngine>(storage: Arc<Mutex<Storage<E>>>) -> Result<(), 
                 upks.push(tmp_bytes);
             }
 
+            let mut vk_bytes = Vec::new();
+            storage
+                .lock()
+                .await
+                .params
+                .verification_key
+                .write(&mut vk_bytes)
+                .unwrap();
+
             if let Ok((new_commit_cell, new_upk_cell, tx_id)) = send_block(
                 rollup_hash,
                 rollup_dep_hash,
                 pre_commit_hash,
                 pre_upk_hash,
                 block_bytes,
+                vk_bytes,
+                omega,
                 upks,
             )
             .await
@@ -124,6 +138,7 @@ async fn register<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: RegisterRequest = req.body_json().await?;
+    println!("new next user: {:?}", params);
 
     let (pubkey, psk) = (
         PublicKey::from_hex(&params.pubkey).unwrap(),
@@ -195,12 +210,24 @@ async fn deposit<E: PairingEngine>(
         let udt_amount: u128 = req.state().lock().await.total_udt_amount + amount;
         let my_udt_amount: u128 = req.state().lock().await.my_udt_amount - amount;
 
+        let mut omega = vec![];
+        req.state().lock().await.omega.write(&mut omega).unwrap();
+
         let mut upks = vec![];
         for upk in &req.state().lock().await.params.proving_key.update_keys {
             let mut tmp_bytes = vec![];
             upk.write(&mut tmp_bytes).unwrap();
             upks.push(tmp_bytes);
         }
+
+        let mut vk_bytes = Vec::new();
+        req.state()
+            .lock()
+            .await
+            .params
+            .verification_key
+            .write(&mut vk_bytes)
+            .unwrap();
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, new_my_udt, tx_id)) = send_deposit(
             rollup_hash,
@@ -211,6 +238,8 @@ async fn deposit<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
+            vk_bytes,
+            omega,
             upks,
             udt_amount,
             my_udt_amount,
@@ -283,12 +312,24 @@ async fn withdraw<E: PairingEngine>(
         let udt_amount: u128 = req.state().lock().await.total_udt_amount - amount;
         let my_udt_amount: u128 = amount;
 
+        let mut omega = vec![];
+        req.state().lock().await.omega.write(&mut omega).unwrap();
+
         let mut upks = vec![];
         for upk in &req.state().lock().await.params.proving_key.update_keys {
             let mut tmp_bytes = vec![];
             upk.write(&mut tmp_bytes).unwrap();
             upks.push(tmp_bytes);
         }
+
+        let mut vk_bytes = Vec::new();
+        req.state()
+            .lock()
+            .await
+            .params
+            .verification_key
+            .write(&mut vk_bytes)
+            .unwrap();
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, tx_id)) = send_withdraw(
             rollup_hash,
@@ -298,6 +339,8 @@ async fn withdraw<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
+            vk_bytes,
+            omega,
             upks,
             udt_amount,
             my_udt_amount,
@@ -404,9 +447,28 @@ async fn setup<E: PairingEngine>(req: Request<Arc<Mutex<Storage<E>>>>) -> Result
         upks_bytes.push(tmp_bytes);
     }
 
+    let mut omega = vec![];
+    req.state().lock().await.omega.write(&mut omega).unwrap();
+
+    let mut vk_bytes = Vec::new();
+    req.state()
+        .lock()
+        .await
+        .params
+        .verification_key
+        .write(&mut vk_bytes)
+        .unwrap();
+
     // send init state to chain.
-    if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) =
-        init_state(rollup_lock, rollup_dep, commit_bytes, upks_bytes).await
+    if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) = init_state(
+        rollup_lock,
+        rollup_dep,
+        commit_bytes,
+        vk_bytes,
+        omega,
+        upks_bytes,
+    )
+    .await
     {
         req.state().lock().await.commit_cell = commit_cell;
         req.state().lock().await.upk_cell = upk_cell;
@@ -433,7 +495,7 @@ fn main() {
     task::spawn(miner(s.clone()));
 
     // API server
-    tide::log::start();
+    //tide::log::start();
     let mut app = tide::with_state(s);
     app.at("/").get(|_| async { Ok("Asvc Rollup is running!") });
 
