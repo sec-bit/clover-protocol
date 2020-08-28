@@ -7,7 +7,7 @@ use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
 use ckb_zkp::curve::bn_256::Bn_256;
-use ckb_zkp::math::PairingEngine;
+use ckb_zkp::math::{PairingEngine, ToBytes};
 
 mod asvc;
 mod storage;
@@ -17,7 +17,9 @@ use storage::Storage;
 
 use asvc_rollup::block::Block;
 use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
-use ckb_rpc::{init_state, listen_blocks, send_block, send_deposit, send_withdraw};
+use ckb_rpc::{
+    deploy_contract, init_state, listen_blocks, send_block, send_deposit, send_withdraw,
+};
 
 /// listening task.
 async fn listen_contracts<E: PairingEngine>(
@@ -27,7 +29,7 @@ async fn listen_contracts<E: PairingEngine>(
 
     loop {
         // 10s to read lastest block to check if block has deposit tx.
-        task::sleep(Duration::from_secs(10)).await;
+        task::sleep(Duration::from_secs(1000)).await;
         println!(
             "Listen Task: start read block's txs. Current block height: {}",
             l1_block_height
@@ -275,10 +277,40 @@ async fn transfer<E: PairingEngine>(
 /// wallet transfer api. build tx and send to ckb.
 async fn setup<E: PairingEngine>(req: Request<Arc<Mutex<Storage<E>>>>) -> Result<String, Error> {
     //let from_fpk = req.state().lock().await.user_fpk(from);
+    let (rollup_lock, rollup_dep, udt_lock) = deploy_contract("asvc_rollup").await.unwrap();
+
+    println!("ASVC rollup lock: {}", rollup_lock);
+    println!("ASVC rollup lock dep: {}", rollup_dep);
+    println!("ASVC udt lock: {}", udt_lock);
+
+    req.state().lock().await.rollup_lock = rollup_lock.clone();
+    req.state().lock().await.rollup_dep = rollup_dep.clone();
+    req.state().lock().await.udt_lock = udt_lock;
+
+    let mut commit_bytes = vec![];
+    req.state()
+        .lock()
+        .await
+        .commit
+        .write(&mut commit_bytes)
+        .unwrap();
+
+    let mut upks_bytes = vec![];
+    for upk in &req.state().lock().await.params.proving_key.update_keys {
+        let mut tmp_bytes = vec![];
+        upk.write(&mut tmp_bytes).unwrap();
+        upks_bytes.push(tmp_bytes);
+    }
 
     // send init state to chain.
-    if let Ok(res) = init_state().await {
-        Ok(res)
+    if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) =
+        init_state(rollup_lock, rollup_dep, commit_bytes, upks_bytes).await
+    {
+        req.state().lock().await.commit_cell = commit_cell;
+        req.state().lock().await.upk_cell = upk_cell;
+        req.state().lock().await.udt_cell = udt_cell;
+
+        Ok(tx_id)
     } else {
         Ok("Init Failure".to_owned())
     }

@@ -13,7 +13,6 @@ path = "src/contract.rs"
 name = "mock-ckb"
 
 [dependencies]
-rollup = { path = "../rollup" }
 tide = "0.13"
 async-std = { version = "1", features = ["attributes"] }
 ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc" }

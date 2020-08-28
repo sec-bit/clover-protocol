@@ -36,6 +36,13 @@ pub struct Storage<E: PairingEngine> {
 
     pub nonces: Vec<u32>,
     pub tmp_nonces: Vec<u32>,
+
+    pub rollup_lock: String,
+    pub rollup_dep: String,
+    pub udt_lock: String,
+    pub commit_cell: String,
+    pub upk_cell: String,
+    pub udt_cell: String,
 }
 
 impl<E: PairingEngine> Storage<E> {
@@ -64,6 +71,13 @@ impl<E: PairingEngine> Storage<E> {
             nonces: vec![0u32; ACCOUNT_SIZE],
             tmp_nonces: vec![0u32; ACCOUNT_SIZE],
             full_pubkeys: full_pubkeys,
+
+            rollup_lock: String::new(),
+            rollup_dep: String::new(),
+            udt_lock: String::new(),
+            commit_cell: String::new(),
+            upk_cell: String::new(),
+            udt_cell: String::new(),
         }
     }
 

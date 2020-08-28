@@ -32,10 +32,17 @@ async fn miner(blockchain: Arc<Mutex<Blockchain>>) -> Result<(), std::io::Error>
     }
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct DeployReq {
+    pub contract: String,
+}
+
 async fn deploy(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Error> {
-    let data = req.body_string().await?;
-    println!("Recv Block hex: {:?}, len: {}", data, data.len());
-    let contract_bytes: Vec<u8> = hex::decode(data).unwrap();
+    println!("start deploy contract.........");
+    let rpc: DeployReq = req.body_json().await?;
+    let rollup_bin: Bytes = std::fs::read(format!("./build/debug/{}", rpc.contract))
+        .expect("binary")
+        .into();
 
     let mut blockchain = req.state().lock().await;
 
@@ -45,7 +52,7 @@ async fn deploy(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Er
         .build_script(&success_point, Default::default())
         .expect("script");
 
-    let rollup_point = blockchain.context.deploy_cell(contract_bytes.into());
+    let rollup_point = blockchain.context.deploy_cell(rollup_bin);
     let rollup_script_args: Bytes = [0u8; 1].to_vec().into();
     let rollup_lock_script = blockchain
         .context
@@ -99,7 +106,7 @@ async fn rpc(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Error
                 .context
                 .verify_tx(&tx.unpack(), MAX_CYCLES)
                 .expect("pass verification");
-            println!("over deposit: {}...", cycles);
+            println!("Tx cycles: {}...", cycles);
 
             let tx_hash = tx.hash();
             blockchain.pool.insert(tx_hash.clone(), tx);
@@ -178,7 +185,7 @@ fn main() {
     let mut app = tide::with_state(blockchain);
 
     // contracts
-    app.at("deploy").post(deploy);
+    app.at("/deploy").post(deploy);
 
     // node
     app.at("/").post(rpc);

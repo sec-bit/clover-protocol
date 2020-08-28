@@ -1,18 +1,15 @@
 use serde_json::{json, Value};
 
-use ckb_tool::{
-    ckb_jsonrpc_types as json_types,
-    ckb_types::{
-        bytes::Bytes,
-        core::{Capacity, TransactionBuilder, TransactionView},
-        packed::*,
-        prelude::*,
-    },
+use ckb_tool::ckb_types::{
+    bytes::Bytes,
+    core::{Capacity, TransactionBuilder},
+    packed::*,
+    prelude::*,
 };
 
 const NODE_RPC_ADDR: &'static str = "http://127.0.0.1:8114";
 
-fn jsonrpc(method: &str, params: Vec<&str>) -> Value {
+fn jsonrpc(method: &str, params: Value) -> Value {
     json!(
         {
             "id": 0,
@@ -23,10 +20,41 @@ fn jsonrpc(method: &str, params: Vec<&str>) -> Value {
     )
 }
 
+pub async fn deploy_contract(name: &str) -> Result<(String, String, String), ()> {
+    match surf::post(format!("{}/deploy", NODE_RPC_ADDR))
+        .body_json(&json!({ "contract": name }))
+        .map_err(|_e| ())?
+        .await
+    {
+        Ok(mut res) => match res.body_json::<Value>().await {
+            Ok(mut value) => {
+                let result = value["result"].take();
+                let rollup_lock = result[0].as_str().ok_or(())?;
+                let rollup_lock_dep = result[1].as_str().ok_or(())?;
+                let udt_lock = result[2].as_str().ok_or(())?;
+
+                Ok((
+                    rollup_lock.to_owned(),
+                    rollup_lock_dep.to_owned(),
+                    udt_lock.to_owned(),
+                ))
+            }
+            Err(err) => {
+                println!("JSONRPC err: {:?}", err);
+                Err(())
+            }
+        },
+        Err(err) => {
+            println!("RPC deploy contract error: {:?}", err);
+            Err(())
+        }
+    }
+}
+
 pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
     //get_tip_block_number
     let now_height = match surf::post(NODE_RPC_ADDR)
-        .body_json(&jsonrpc("get_tip_block_number", vec![]))
+        .body_json(&jsonrpc("get_tip_block_number", Default::default()))
         .map_err(|_e| ())?
         .await
     {
@@ -36,7 +64,7 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
                 result.as_u64().ok_or(())?
             }
             Err(err) => {
-                println!("Listening err: {:?}", err);
+                println!("JSONRPC err: {:?}", err);
                 return Err(());
             }
         },
@@ -58,7 +86,7 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
     for i in block_height..now_height {
         // get block info
         if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
-            .body_json(&jsonrpc("get_block", vec![i]))
+            .body_json(&jsonrpc("get_block", json!(vec![i])))
             .map_err(|_e| ())?
             .await
         {
@@ -80,7 +108,7 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
 pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
     //get_tip_block_number
     let now_height = match surf::post(NODE_RPC_ADDR)
-        .body_json(&jsonrpc("get_tip_block_number", vec![]))
+        .body_json(&jsonrpc("get_tip_block_number", Default::default()))
         .map_err(|_e| ())?
         .await
     {
@@ -107,13 +135,16 @@ pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64
         return Ok((vec![], block_height));
     }
 
-    let mut blocks = vec![];
-    let mut change_block_height = block_height;
+    let blocks = vec![];
+    let _change_block_height = block_height;
 
     for i in block_height..now_height {
         // get block hash
         if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
-            .body_json(&jsonrpc("get_header_by_number", vec![&format!("{:#x}", i)]))
+            .body_json(&jsonrpc(
+                "get_header_by_number",
+                json!(vec![&format!("{:#x}", i)]),
+            ))
             .map_err(|_e| ())?
             .await
         {
@@ -122,7 +153,7 @@ pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64
 
             // get block info
             if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
-                .body_json(&jsonrpc("get_block", vec![hash]))
+                .body_json(&jsonrpc("get_block", json!(vec![hash])))
                 .map_err(|_e| ())?
                 .await
             {
@@ -130,7 +161,7 @@ pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64
                 let transactions = result["result"]["transactions"].as_array().ok_or(())?;
 
                 for tx in transactions {
-                    println!("{:?}", tx);
+                    //println!("{:?}", tx);
                     // TODO CHECK Tx is to our contract.
                 }
             } else {
@@ -144,48 +175,62 @@ pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64
     Ok((blocks, block_height))
 }
 
-/// asvc rollup contract address.
-const ASVC_CONTRACT_HASH: &'static str = "0x";
-
-/// asvc asset locked contract address.
-const ASVC_ASSET_HASH: &'static str = "0x";
-
-/// merkle tree rollup contract address.
-const MERKLETREE_CONTRACT_HASH: &'static str = "0x";
-
-/// merkle tree asset locked contract address.
-const MERKLETREE_ASSET_HASH: &'static str = "0x";
-
 /// init state of L2
-pub async fn init_state() -> Result<String, ()> {
-    let prev = "";
-    let contract = "";
-    let script = "";
+pub async fn init_state(
+    rollup_hash: String,
+    rollup_dep_hash: String,
+    mut commit: Vec<u8>,
+    upks: Vec<Vec<u8>>,
+) -> Result<(String, String, String, String), ()> {
+    let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
+    let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
+    let rollup_dep = CellDep::new_unchecked(hex::decode(rollup_dep_hash).unwrap().into());
 
-    let prev_point = OutPoint::new_unchecked(Bytes::from(prev));
-    let lock_cell_point = OutPoint::new_unchecked(Bytes::from(contract));
-    let dep_point = CellDep::new_builder().out_point(lock_cell_point).build();
-    let lock_point = Script::new_unchecked(Bytes::from(script));
-
-    let input = CellInput::new_builder().previous_output(prev_point).build();
-
-    let output = CellOutput::new_builder()
-        .capacity(500u64.pack())
-        .lock(lock_point)
+    println!("start init state...");
+    let init_output_commit = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let init_upk = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
+        .build();
+    let init_udt = CellOutput::new_builder()
+        .capacity(input_ckb.pack())
+        .lock(rollup_lock.clone())
         .build();
 
-    // data here
-    let outputs_data = vec![Bytes::new(); 3];
+    commit.extend_from_slice(&mut 0u32.to_le_bytes()[..]);
 
-    // build transaction
+    let mut all_upks = vec![];
+    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
+    for mut upk in upks {
+        all_upks.extend_from_slice(&mut upk[..]);
+    }
+
+    let init_outputs_data: Vec<Bytes> = vec![
+        commit.into(),
+        all_upks.into(),
+        0u128.to_le_bytes().to_vec().into(),
+    ];
+
     let tx = TransactionBuilder::default()
-        .inputs(vec![input])
-        .outputs(vec![output])
-        .outputs_data(outputs_data.pack())
-        .cell_dep(dep_point)
+        .inputs(vec![])
+        .outputs(vec![
+            init_output_commit.clone(),
+            init_upk.clone(),
+            init_udt.clone(),
+        ])
+        .outputs_data(init_outputs_data.pack())
+        .cell_dep(rollup_dep)
         .build();
 
-    send_tx(tx).await
+    Ok((
+        hex::encode(init_output_commit.as_slice()),
+        hex::encode(init_upk.as_slice()),
+        hex::encode(init_udt.as_slice()),
+        send_tx(tx.pack()).await?,
+    ))
 }
 
 pub async fn post_block(_block: Vec<u8>, prev: String) -> Result<String, ()> {
@@ -214,7 +259,7 @@ pub async fn post_block(_block: Vec<u8>, prev: String) -> Result<String, ()> {
         .cell_dep(dep_point)
         .build();
 
-    send_tx(tx).await
+    send_tx(tx.pack()).await
 }
 
 pub async fn send_deposit(_block: Vec<u8>) -> Result<String, ()> {
@@ -236,7 +281,7 @@ pub async fn send_block(_block: Vec<u8>) -> Result<String, ()> {
 }
 
 async fn send_tx(tx: TransactionView) -> Result<String, ()> {
-    let tx_json = json_types::TransactionView::from(tx);
+    let s = hex::encode(tx.as_slice());
 
     // Build a CKB Transaction
     let rpc_call = json!(
@@ -244,11 +289,9 @@ async fn send_tx(tx: TransactionView) -> Result<String, ()> {
             "id": 0,
             "jsonrpc": "2.0",
             "method": "send_transaction",
-            "params": [tx_json],
+            "params": [s],
         }
     );
-
-    println!("rpc_call: {:?}", rpc_call);
 
     // NODE RPC send_transaction
     match surf::post(NODE_RPC_ADDR)
@@ -257,12 +300,7 @@ async fn send_tx(tx: TransactionView) -> Result<String, ()> {
         .await
     {
         Ok(mut res) => match res.body_json::<Value>().await {
-            Ok(value) => {
-                println!("{:?}", value);
-                let tx_id = value["result"].as_str().ok_or(())?;
-                println!("tx_id: {:?}", tx_id);
-                return Ok(tx_id.to_owned());
-            }
+            Ok(value) => Ok(value["result"].as_str().unwrap().to_owned()),
             Err(err) => {
                 println!("{:?}", err);
                 Err(())

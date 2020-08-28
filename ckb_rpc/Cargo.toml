@@ -11,3 +11,4 @@ ckb-tool = { git = "https://github.com/jjyr/ckb-tool.git", tag = "v0.1.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 surf = "1"
+hex = "0.4"

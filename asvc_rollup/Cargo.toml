@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc"] }
 #ckb-zkp = { path="../../ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc"] }
-hex = { version = "0.4", default-feautres = false }
+hex = "0.4"

@@ -1049,6 +1049,7 @@ name = "ckb_rpc"
 version = "0.1.0"
 dependencies = [
  "ckb-tool",
+ "hex",
  "serde",
  "serde_json",
  "surf",
@@ -2505,7 +2506,6 @@ dependencies = [
  "ckb-tool",
  "ckb-zkp",
  "hex",
- "rollup",
  "serde",
  "serde_json",
  "tide",
