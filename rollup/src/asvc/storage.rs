@@ -491,6 +491,14 @@ impl<E: PairingEngine> Storage<E> {
         self.next_user = self.tmp_next_user.clone();
         self.balances = self.tmp_balances.clone();
         self.nonces = self.tmp_nonces.clone();
+
+        // rebuild txs_pool
+        for (_tx_hash, tx) in self.pools.iter_mut() {
+            let u = tx.from() as usize;
+            tx.proof = self.proofs[u].clone();
+            tx.nonce = self.nonces[u].clone();
+            tx.balance = self.balances[u].clone();
+        }
     }
 
     /// if send to L1 failure, revert the block's txs.

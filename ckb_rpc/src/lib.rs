@@ -119,7 +119,6 @@ pub async fn listen_blocks(
                             hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice());
                         let udt_cell = match block_data[0] {
                             1u8 | 2u8 => {
-                                let upt_cell = tx.outputs().get(2).unwrap();
                                 let mut u128_bytes = [0u8; 16];
                                 u128_bytes
                                     .copy_from_slice(tx.outputs_data().get(2).unwrap().as_slice());

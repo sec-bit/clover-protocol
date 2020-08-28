@@ -29,7 +29,7 @@ async fn listen_contracts<E: PairingEngine>(
 
     loop {
         // 10s to read lastest block to check if block has deposit tx.
-        task::sleep(Duration::from_secs(1000)).await;
+        task::sleep(Duration::from_secs(10)).await;
         println!(
             "Listen Task: start read block's txs. Current block height: {}",
             l1_block_height
