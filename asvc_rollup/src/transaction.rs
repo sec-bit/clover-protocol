@@ -148,7 +148,7 @@ impl<E: PairingEngine> Transaction<E> {
     pub fn proof_param(&self) -> E::Fr {
         let mut bytes = Vec::new();
         self.addr.write(&mut bytes).unwrap();
-        self.nonce.write(&mut bytes).unwrap();
+        (self.nonce-1).write(&mut bytes).unwrap();
         self.balance.to_le_bytes().write(&mut bytes).unwrap();
 
         mimc::hash(&bytes)
