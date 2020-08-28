@@ -4,7 +4,7 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{format, string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 #[cfg(feature = "std")]
 use std::{format, string::String, vec::Vec};
