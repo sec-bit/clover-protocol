@@ -1,10 +1,11 @@
-use ckb_zkp::math::{FromBytes, PairingEngine, ToBytes};
+use ckb_zkp::math::{Field, FromBytes, PairingEngine, ToBytes, Zero};
 use ckb_zkp::scheme::asvc::{
     update_commit, verify_pos, Commitment, Proof, UpdateKey, VerificationKey,
 };
+use core::ops::{Add, Mul, Sub};
 
-use crate::transaction::{Transaction, ACCOUNT_SIZE};
-use crate::{format, String, Vec};
+use crate::transaction::{u128_to_fr, u32_to_fr, Transaction, TxType, ACCOUNT_SIZE};
+use crate::{vec, String, Vec};
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct Block<E: PairingEngine> {
@@ -64,46 +65,369 @@ impl<E: PairingEngine> Block<E> {
         vk: &VerificationKey<E>,
         omega: E::Fr,
         upks: &Vec<UpdateKey<E>>,
-    ) -> Result<bool, String> {
+    ) -> Result<i128, ()> {
         if upks.len() != ACCOUNT_SIZE {
-            return Err(String::from("ERR UPK LENGTH"));
+            return Err(());
         }
 
-        let mut proof_params = Vec::new();
-        let mut froms = Vec::new();
+        let mut points2prove: Vec<u32> = Vec::new();
 
-        let mut tmp_commit = self.commit.clone();
+        // - Delta and point_values should be calculated during txs traversing.
+        // - Delta can be accumulated, cause commit updating process is additive and sequence independent.
+        // - Point_value calculated once for each point that is needed to be proved.
+        // - A specific account's balance should remain identical.
+        // - While an account become a transfer-from, his up-to-that-tx balance should be verified suffient.
+        // - In one transfer, a fransfer-to account's nonce remain unchanged.
+        // - L2 block height should be strictly incremental by one.
+        // - Each account only need to execute proof-verifying once.
+
+        // map[point](0: delta, 1: balance_change, 2: Option<proof_param>,
+        //            3: current_nonce, 4: origin_balance)
+        // the "origin" means the value is to be proved during this verification.
+        let mut table: Vec<(Option<E::Fr>, i128, Option<E::Fr>, u32, u128)> =
+            vec![(None, 0, None, 0, 0); ACCOUNT_SIZE];
+        // aggregate the overall capital changing of the block
+        #[allow(non_snake_case)]
+        let MUL160: E::Fr = E::Fr::from(2).pow(&[160]);
+        #[allow(non_snake_case)]
+        let MUL128: E::Fr = E::Fr::from(2).pow(&[128]);
+        let mut overall_change: i128 = 0;
 
         for tx in &self.txs {
-            let from = tx.from();
-            let delta = tx.proof_param();
+            match tx.tx_type {
+                // A block submitted by user only contains Deposit and Withdraw transactions.
+                TxType::Deposit(to, amount) => {
+                    points2prove.push(to);
+                    overall_change += amount as i128;
+                    match table[to as usize].0 {
+                        None => {
+                            table[to as usize] = (
+                                Some(E::Fr::zero().add(&u128_to_fr::<E>(amount))),
+                                amount as i128,
+                                Some(
+                                    tx.addr
+                                        .mul(&MUL160)
+                                        .add(&(MUL128.mul(&u32_to_fr::<E>(tx.nonce))))
+                                        .add(&u128_to_fr::<E>(tx.balance)),
+                                ),
+                                tx.nonce,
+                                tx.balance,
+                            );
+                        }
+                        Some(_) => {
+                            table[to as usize].0 =
+                                Some(table[to as usize].0.unwrap().add(&u128_to_fr::<E>(amount)));
+                            table[to as usize].1 += amount as i128;
+                        }
+                    }
+                }
+                TxType::Withdraw(from, amount) => {
+                    overall_change -= amount as i128;
+                    match table[from as usize].0 {
+                        None => {
+                            points2prove.push(from);
+                            table[from as usize] = (
+                                Some(E::Fr::zero().sub(&u128_to_fr::<E>(amount))),
+                                -(amount as i128),
+                                Some(
+                                    tx.addr
+                                        .mul(&MUL160)
+                                        .add(&MUL128)
+                                        .add(&u128_to_fr::<E>(tx.balance)),
+                                ),
+                                tx.nonce,
+                                tx.balance,
+                            )
+                        }
+                        Some(_) => {
+                            table[from as usize].0 = Some(
+                                table[from as usize]
+                                    .0
+                                    .unwrap()
+                                    .sub(&u128_to_fr::<E>(amount)),
+                            );
+                            table[from as usize].1 -= amount as i128;
+                        }
+                    }
+                    // balance sufficiency check
+                    if table[from as usize].1 < 0 {
+                        if table[from as usize].4 < (-table[from as usize].1 as u128) {
+                            return Err(());
+                        }
+                    }
+                }
+                // A block submitted by L2 service only contains Transfer and Register transactions.
+                TxType::Transfer(from, to, amount) => {
+                    match table[from as usize].0 {
+                        None => {
+                            points2prove.push(from);
+                            table[from as usize] = (
+                                Some(MUL128.sub(&u128_to_fr::<E>(amount))),
+                                -(amount as i128),
+                                Some(
+                                    tx.addr
+                                        .mul(&MUL160)
+                                        .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1)))
+                                        .add(&u128_to_fr::<E>(tx.balance)),
+                                ),
+                                tx.nonce,
+                                tx.balance,
+                            );
+                        }
+                        Some(_) => match table[from as usize].2 {
+                            None => {
+                                points2prove.push(from);
+                                table[from as usize] = (
+                                    Some(
+                                        table[from as usize]
+                                            .0
+                                            .unwrap()
+                                            .add(&MUL128)
+                                            .sub(&u128_to_fr::<E>(amount)),
+                                    ),
+                                    table[from as usize].1 - (amount as i128),
+                                    Some(
+                                        tx.addr
+                                            .mul(&MUL160)
+                                            .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1)))
+                                            .add(&u128_to_fr::<E>(tx.balance)),
+                                    ),
+                                    tx.nonce,
+                                    tx.balance,
+                                );
+                            }
+                            Some(_) => {
+                                if tx.nonce - table[from as usize].3 != 1 {
+                                    return Err(());
+                                }
+                                table[from as usize].0 = Some(
+                                    table[from as usize]
+                                        .0
+                                        .unwrap()
+                                        .add(&MUL128)
+                                        .sub(&u128_to_fr::<E>(amount)),
+                                );
+                                table[from as usize].1 -= amount as i128;
+                                table[from as usize].3 = tx.nonce;
+                            }
+                        },
+                    }
+                    // balance sufficiency check
+                    if table[from as usize].1 < 0 {
+                        if table[from as usize].4 < (-table[from as usize].1 as u128) {
+                            return Err(());
+                        }
+                    }
+                    match table[to as usize].0 {
+                        None => {
+                            // In a Transfer, the nonce of transfer-to account remains unchanged.
+                            table[to as usize] =
+                                (Some(u128_to_fr::<E>(amount)), amount as i128, None, 0, 0);
+                        }
+                        Some(_) => {
+                            table[to as usize].0 =
+                                Some(table[to as usize].0.unwrap().add(&u128_to_fr::<E>(amount)));
+                            table[to as usize].1 += amount as i128;
+                        }
+                    }
+                }
+                TxType::Register(to) => {
+                    // A user must be registered to got paid.
+                    // So the Registration should happen on a new user.
+                    table[to as usize] = (
+                        Some(tx.addr.mul(&MUL160).add(&MUL128)),
+                        0,
+                        Some(
+                            E::Fr::zero()
+                                .add(&u128_to_fr::<E>(tx.balance))
+                                .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1))),
+                        ),
+                        tx.nonce,
+                        tx.balance,
+                    );
+                }
+            }
+        }
+        // previous version
+        {
+            // for tx in &self.txs {
+            //     // A block submitted by user only contains Deposit and Withdraw transactions.
+            //     match tx.tx_type {
+            //         TxType::Deposit(to, amount) => {
+            //             overall_change += amount as i128;
 
-            froms.push(from);
-            proof_params.push(delta);
+            //             if mapping[to as usize] == 0 {
+            //                 // user "to" is not recorded.
+            //                 points2prove.push(ptr as u32);
+            //                 mapping[to as usize] = ptr;
+            //                 table[ptr] = (
+            //                     u128_to_fr(amount),
+            //                     amount as i128,
+            //                     Some(
+            //                         tx.addr
+            //                             .clone()
+            //                             .mul(&MUL160)
+            //                             .add(&u32_to_fr(tx.nonce).mul(&MUL128))
+            //                             .add(&u128_to_fr(tx.balance)),
+            //                     ),
+            //                     tx.nonce,
+            //                     tx.balance,
+            //                 );
+            //                 ptr += 1;
+            //             } else {
+            //                 // user is recorded, leave 1: proof_param, origin_nonce,
+            //                 table[mapping[to as usize]].0 =
+            //                     table[mapping[to as usize]].0.add(&u128_to_fr(amount));
+            //                 table[mapping[to as usize]].1 += amount;
+            //             }
+            //         }
+            //         TxType::Withdraw(from, amount) => {
+            //             overall_change -= amount as i128;
 
+            //             if mapping[from as usize] == 0 {
+            //                 points2prove.push(ptr);
+            //                 mapping[from as usize] = ptr;
+            //                 table[ptr] = (
+            //                     u128_to_fr(amount).neg(),
+            //                     -(amount as i128),
+            //                     Some(
+            //                         tx.addr
+            //                             .clone()
+            //                             .mul(&MUL160)
+            //                             .add(&MUL128)
+            //                             .add(&u128_to_fr(tx.balance)),
+            //                     ),
+            //                     tx.nonce,
+            //                     tx.balance,
+            //                 );
+            //                 ptr += 1;
+            //             } else {
+            //                 table[mapping[from as usize]].0 =
+            //                     table[mapping[from]].0.sub(&u128_to_fr(amount));
+            //                 table[mapping[from as usize]].1 -= amount;
+            //             }
+            //             // balance sufficiency check
+            //             if let None = tx.balance.checked_sub(table[mapping[from]].1) {
+            //                 return Err(());
+            //             }
+            //         }
+            //         // A block submitted by L2 service only contains Transfer and Register transactions.
+            //         TxType::Transfer(from, to, amount) => {
+            //             if mapping[from as usize] == 0 {
+            //                 points2prove.push(ptr);
+            //                 mapping[from as usize] = ptr;
+            //                 table[ptr] = (
+            //                     E::Fr::from(2).pow(&[128]).sub(&u128_to_fr(amount)),
+            //                     -amount,
+            //                     Some(
+            //                         tx.addr
+            //                             .clone()
+            //                             .mul(&MUL160)
+            //                             .add(&u32_to_fr(tx.nonce - 1).mul(&MUL128))
+            //                             .add(&u128_to_fr(tx.balance)),
+            //                     ),
+            //                     tx.nonce,
+            //                     tx.balance,
+            //                 );
+            //                 ptr += 1;
+            //             } else {
+            //                 match table[mapping[from as usize]].2 {
+            //                     None => {
+            //                         // point's point_value not calculated, nonce, balance not recorded.
+            //                         // point_value, nonce, balance should be added here.
+            //                         let pos = mapping.get[from as usize];
+            //                         points2prove.push(pos);
+            //                         table[pos as usize] = (
+            //                             table[pos].0.add(&MUL128).sub(&u128_to_fr(amount)),
+            //                             table[pos].1 - amount,
+            //                             Some(
+            //                                 tx.addr
+            //                                     .clone()
+            //                                     .mul(&MUL160)
+            //                                     .add(
+            //                                         E::Fr::from(tx.nonce - 1)
+            //                                             .mul(E::Fr::from(2).pow(&[128])),
+            //                                     )
+            //                                     .add(&u128_to_fr(tx.balance)),
+            //                             ),
+            //                             tx.nonce,
+            //                             tx.balance,
+            //                         );
+            //                     }
+            //                     Some(_) => {
+            //                         // point's point_value, nonce, balance recorded.
+            //                         let pos = mapping[from];
+            //                         if tx.nonce - table[pos].3 != 1 {
+            //                             return Err(());
+            //                         }
+            //                         table[pos].0 =
+            //                             table[pos].0.add(&MUL128).sub(&u128_to_fr(amount));
+            //                         table[pos].1 -= amount;
+            //                         table[pos].3 = tx.nonce;
+            //                     }
+            //                 }
+            //             }
+            //             // balance sufficiency check
+            //             if let None = tx.balance.checked_sub(table[mapping[from]].1) {
+            //                 return Err(());
+            //             }
+            //             if mapping[to as usize] == 0 {
+            //                 // In a Transfer, the nonce of transfer-to account remains unchanged.
+            //                 mapping[to as usize] = ptr;
+            //                 table[ptr] = (&u128_to_fr(amount), amount, None, 0, 0);
+            //                 ptr += 1;
+            //             } else {
+            //                 // point_value cannot be calculated here.
+            //                 let pos = mapping[to as usize];
+            //                 table[pos].0 = table[pos].0.add(&u128_to_fr(amount));
+            //                 table[pos].1 += amount;
+            //             }
+            //         }
+            //         TxType::Register(to) => {
+            //             // A user must be registered to got paid.
+            //             // So the Registration should happen on a new user.
+            //             mapping[to as usize] = ptr;
+            //             table[ptr] = (
+            //                 tx.addr.clone().mul(&MUL160).add(&MUL128),
+            //                 0,
+            //                 Some(
+            //                     u32_to_fr(tx.nonce - 1)
+            //                         .mul(&MUL128)
+            //                         .add(&u128_to_fr(tx.balance)),
+            //                 ),
+            //                 tx.nonce,
+            //                 tx.balance,
+            //             );
+            //             ptr += 1;
+            //         }
+            //     }
+            // }
+        }
+
+        let mut point_values = Vec::new();
+        let mut tmp_commit = self.commit.clone();
+        for point in &points2prove {
+            point_values.push(table[*point as usize].2.unwrap());
             tmp_commit = update_commit(
                 &tmp_commit,
-                delta,
-                from,
-                &upks[from as usize],
+                table[*point as usize].0.unwrap(),
+                *point as u32,
+                &upks[*point as usize],
                 omega,
                 ACCOUNT_SIZE,
             )
-            .map_err(|e| format!("UPDATE COMMIT ERROR: {:?}", e))?;
+            .map_err(|_| ())?;
         }
-
-        if tmp_commit.commit != self.new_commit.commit {
-            return Err(String::from("COMMIT NOT EQ"));
-        }
-
         verify_pos::<E>(
             vk,
-            &self.new_commit,
-            proof_params,
-            froms,
+            &self.commit,
+            point_values,
+            points2prove,
             &self.proof,
             omega,
         )
-        .map_err(|_| String::from("VERIFY POS FAILURE"))
+        .map_err(|_| ())?;
+
+        Ok(overall_change)
     }
 }

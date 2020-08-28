@@ -259,6 +259,10 @@ pub fn u128_to_fr<E: PairingEngine>(u: u128) -> E::Fr {
     E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(u))
 }
 
+pub fn u32_to_fr<E: PairingEngine>(u: u32) -> E::Fr {
+    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(u as u64))
+}
+
 impl ToBytes for TxType {
     #[inline]
     fn write<W: Write>(&self, mut writer: W) -> IoResult<()> {
