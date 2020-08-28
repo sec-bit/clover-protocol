@@ -2501,8 +2501,13 @@ name = "mock"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "ckb-testtool",
+ "ckb-tool",
  "ckb-zkp",
+ "hex",
  "rollup",
+ "serde",
+ "serde_json",
  "tide",
 ]
 
