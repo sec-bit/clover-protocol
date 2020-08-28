@@ -118,29 +118,29 @@ impl<E: PairingEngine> Storage<E> {
         let tx_hash = tx.hash();
 
         if !self.pools.contains_key(&tx_hash) {
-            match tx.tx_type {
-                TxType::Transfer(from, to, amount) => {
-                    if amount > self.tmp_balances[from as usize] {
-                        return false;
-                    }
+            // match tx.tx_type {
+            //     TxType::Transfer(from, to, amount) => {
+            //         if amount > self.tmp_balances[from as usize] {
+            //             return false;
+            //         }
 
-                    self.tmp_balances[from as usize] -= amount;
-                    self.tmp_balances[to as usize] += amount;
-                    self.tmp_nonces[from as usize] += 1;
-                }
-                TxType::Register(account) => {
-                    self.tmp_next_user += 1;
-                    self.tmp_nonces[account as usize] = 1; // account first tx is register.
-                }
-                TxType::Deposit(_to, _amount) => {
-                    // not handle deposit
-                    return false;
-                }
-                TxType::Withdraw(_from, _amount) => {
-                    // not handle withdraw
-                    return false;
-                }
-            }
+            //         self.tmp_balances[from as usize] -= amount;
+            //         self.tmp_balances[to as usize] += amount;
+            //         self.tmp_nonces[from as usize] += 1;
+            //     }
+            //     TxType::Register(account) => {
+            //         self.tmp_next_user += 1;
+            //         self.tmp_nonces[account as usize] = 1; // account first tx is register.
+            //     }
+            //     TxType::Deposit(_to, _amount) => {
+            //         // not handle deposit
+            //         return false;
+            //     }
+            //     TxType::Withdraw(_from, _amount) => {
+            //         // not handle withdraw
+            //         return false;
+            //     }
+            // }
 
             self.pools.insert(tx_hash, tx);
         }
@@ -273,6 +273,10 @@ impl<E: PairingEngine> Storage<E> {
                         n,
                     )
                     .unwrap();
+
+                    self.tmp_balances[from as usize] -= amount;
+                    self.tmp_balances[to as usize] += amount;
+                    self.tmp_nonces[from as usize] += 1;
                 }
                 TxType::Register(account) => {
                     let origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
@@ -312,6 +316,9 @@ impl<E: PairingEngine> Storage<E> {
                         n as usize,
                     )
                     .unwrap();
+
+                    self.tmp_next_user += 1;
+                    self.tmp_nonces[account as usize] = 1; // account first tx is register.
                 }
                 TxType::Deposit(from, amount) => {
                     let from_upk = &self.params.proving_key.update_keys[from as usize];
@@ -369,7 +376,6 @@ impl<E: PairingEngine> Storage<E> {
         }
 
         let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
-
 
         let block = Block {
             proof,
