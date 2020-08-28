@@ -61,7 +61,7 @@ pub async fn listen_blocks(
 
     //get_tip_block_number
     let now_height = match surf::post(NODE_RPC_ADDR)
-        .body_json(&jsonrpc("get_tip_block_number", Default::default()))
+        .body_json(&jsonrpc("get_tip_block_number", json!(vec![""])))
         .map_err(|_e| ())?
         .await
     {
@@ -71,7 +71,7 @@ pub async fn listen_blocks(
                 result.as_u64().ok_or(())?
             }
             Err(err) => {
-                println!("JSONRPC err: {:?}", err);
+                println!("JSONRPC listen block height err: {:?}", err);
                 return Err(());
             }
         },

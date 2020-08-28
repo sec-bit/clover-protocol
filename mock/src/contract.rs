@@ -154,6 +154,7 @@ impl Blockchain {
         }
 
         let current_height = self.blocks.len() as u32;
+        println!("Miner new block: {}, txs: {}", current_height, block.len());
         self.blocks
             .insert(current_height, IndexBlock { txs: block });
     }
