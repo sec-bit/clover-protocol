@@ -33,6 +33,60 @@ pub async fn listen_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()>
         Ok(mut res) => match res.body_json::<Value>().await {
             Ok(mut value) => {
                 let result = value["result"].take();
+                result.as_u64().ok_or(())?
+            }
+            Err(err) => {
+                println!("Listening err: {:?}", err);
+                return Err(());
+            }
+        },
+        Err(err) => {
+            println!("Listening query err: {:?}", err);
+            return Err(());
+        }
+    };
+
+    println!("now_height: {:?}", now_height);
+
+    if now_height <= block_height {
+        return Ok((vec![], block_height));
+    }
+
+    let mut blocks = vec![];
+    let mut change_block_height = block_height;
+
+    for i in block_height..now_height {
+        // get block info
+        if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
+            .body_json(&jsonrpc("get_block", vec![i]))
+            .map_err(|_e| ())?
+            .await
+        {
+            let result = res.body_json::<Value>().await.map_err(|_| ())?;
+            let transactions = result["result"]["transactions"].as_array().ok_or(())?;
+
+            for tx in transactions {
+                println!("{:?}", tx);
+                // TODO CHECK Tx is to our contract.
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok((blocks, block_height))
+}
+
+pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
+    //get_tip_block_number
+    let now_height = match surf::post(NODE_RPC_ADDR)
+        .body_json(&jsonrpc("get_tip_block_number", vec![]))
+        .map_err(|_e| ())?
+        .await
+    {
+        Ok(mut res) => match res.body_json::<Value>().await {
+            Ok(mut value) => {
+                let result = value["result"].take();
                 let hex_num = result.as_str().ok_or(())?;
                 u64::from_str_radix(&hex_num[2..], 16).map_err(|_| ())?
             }
