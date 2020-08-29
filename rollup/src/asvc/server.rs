@@ -39,24 +39,26 @@ async fn listen_contracts<E: PairingEngine>(
         let read_storage = storage.read().await;
         let rollup_lock = &read_storage.rollup_lock;
 
-        if let Ok((blocks, new_height)) = listen_blocks(l1_block_height, rollup_lock).await {
+        if let Ok(blocks) = listen_blocks(l1_block_height, rollup_lock).await {
             drop(read_storage);
-            for (bytes, new_commit, new_upk, is_new_udt) in blocks {
-                if let Ok(block) = Block::from_bytes(&bytes[..]) {
-                    let mut write_storage = storage.write().await;
-                    write_storage.sync_block(block);
+            for (block, new_height) in blocks.iter() {
+                for (bytes, new_commit, new_upk, is_new_udt) in block {
+                    if let Ok(block) = Block::from_bytes(&bytes[..]) {
+                        let mut write_storage = storage.write().await;
+                        write_storage.sync_block(block);
 
-                    write_storage.commit_cell = new_commit;
-                    write_storage.upk_cell = new_upk;
-                    if let Some((new_udt, amount)) = is_new_udt {
-                        write_storage.udt_cell = new_udt;
-                        write_storage.total_udt_amount = amount;
+                        write_storage.commit_cell = new_commit.clone();
+                        write_storage.upk_cell = new_upk.clone();
+                        if let Some((new_udt, amount)) = is_new_udt {
+                            write_storage.udt_cell = new_udt.clone();
+                            write_storage.total_udt_amount = *amount;
+                        }
+                        drop(write_storage);
                     }
-                    drop(write_storage);
                 }
-            }
 
-            l1_block_height = new_height;
+                l1_block_height = *new_height;
+            }
         }
 
         println!(
@@ -194,6 +196,8 @@ async fn deposit<E: PairingEngine>(
 
     let read_storage = req.state().read().await;
 
+    println!("NOW {:?}", read_storage.next_user);
+
     if !read_storage.contains_users(&[from]) {
         return Err(Error::from_str(
             StatusCode::BadRequest,
@@ -213,6 +217,7 @@ async fn deposit<E: PairingEngine>(
     let mut write_storage = req.state().write().await;
 
     if let Some(block) = write_storage.build_block_by_user(tx) {
+        println!("deposit create_block: {}", block.txs.len());
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;
         let success_hash: &String = &write_storage.udt_lock;
@@ -235,9 +240,7 @@ async fn deposit<E: PairingEngine>(
         }
 
         let mut vk_bytes = Vec::new();
-        req.state()
-            .read()
-            .await
+        write_storage
             .params
             .verification_key
             .write(&mut vk_bytes)
@@ -408,19 +411,26 @@ async fn transfer<E: PairingEngine>(
         from, to, amount
     );
 
-    if !req.state().read().await.contains_users(&[from, to]) {
+    let read_storage = req.state().read().await;
+
+    if !read_storage.contains_users(&[from, to]) {
         return Err(Error::from_str(
             StatusCode::BadRequest,
             "the user number is invalid",
         ));
     }
 
-    let read_storage = req.state().read().await;
-
     let from_fpk = read_storage.user_fpk(from);
     let nonce = read_storage.new_next_nonce(from);
     let balance = read_storage.user_balance(from);
     let proof = read_storage.user_proof(from);
+
+    println!(
+        "transfer balance: from: {}, to: {}, amount {}",
+        balance,
+        read_storage.user_balance(to),
+        amount,
+    );
 
     if amount > balance {
         return Err(Error::from_str(

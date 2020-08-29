@@ -46,11 +46,7 @@ where
     println!("start to initialize proofs...");
     let mut proofs = Vec::new();
     for i in 0..n {
-        let proof = prove_pos::<E>(
-            &params.proving_key,
-            vec![Transaction::static_proof_param(&full_pubkeys[i], 0, 0)],
-            vec![i as u32],
-        )?;
+        let proof = prove_pos::<E>(&params.proving_key, vec![E::Fr::zero()], vec![i as u32])?;
         proofs.push(proof);
     }
 

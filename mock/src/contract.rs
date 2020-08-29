@@ -98,14 +98,24 @@ async fn rpc(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Erro
     let results = match method {
         "get_tip_block_number" => json!(req.state().read().await.get_block_height()),
         "get_block" => {
-            let txs: Vec<String> = req
+            let mut txs: Vec<Vec<Vec<String>>> = vec![];
+            for (_tx_hash, outptus) in req
                 .state()
                 .read()
                 .await
                 .get_block(params[0].parse().unwrap())
-                .iter()
-                .map(|tx| hex::encode(tx.as_slice()))
-                .collect();
+            {
+                let mut outs = vec![];
+                for out in outptus {
+                    let (s, p, d) = out;
+                    outs.push(vec![
+                        hex::encode(s.as_slice()),
+                        hex::encode(p.as_slice()),
+                        hex::encode(d),
+                    ]);
+                }
+                txs.push(outs);
+            }
 
             json!(txs)
         }
@@ -131,16 +141,27 @@ async fn rpc(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Erro
 
             // MOCK: context create_ouput_cell for next call.
             let mut results = vec![];
+            let mut mock_tx = vec![];
 
             for i in 0..new_tx.outputs().len() {
                 let output = new_tx.outputs().get(i).unwrap();
-                let data = new_tx.outputs_data().get(i).unwrap();
-                let out_point = blockchain.context.create_cell(output, data.unpack());
+                let data: Bytes = new_tx.outputs_data().get(i).unwrap().unpack();
+                println!(
+                    "cell {} data len: {}, pack len: {}",
+                    i,
+                    data.len(),
+                    data.pack().len()
+                );
+                let lock = output.lock();
+                let out_point = blockchain.context.create_cell(output, data.clone());
+
                 results.push(hex::encode(out_point.as_slice()));
+                mock_tx.push((lock, out_point, data));
             }
 
             let tx_hash = tx.hash();
-            blockchain.pool.insert(tx_hash.clone(), tx);
+
+            blockchain.pool.insert(tx_hash.clone(), mock_tx);
 
             json!(results)
         }
@@ -152,44 +173,36 @@ async fn rpc(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Erro
     Ok(res)
 }
 
-struct IndexBlock {
-    pub txs: Vec<Byte32>,
-}
+/// lock script, outpoint, data
+type MockTx = Vec<(Script, OutPoint, Bytes)>;
 
 struct Blockchain {
     context: Context,
-    pool: HashMap<Byte32, TransactionView>,
-    stable_txs: HashMap<Byte32, TransactionView>,
-    blocks: HashMap<u32, IndexBlock>,
+    pool: HashMap<Byte32, MockTx>,
+    blocks: HashMap<u32, HashMap<Byte32, MockTx>>,
 }
 
 impl Blockchain {
     fn miner_block(&mut self) {
-        let mut block = vec![];
-        for (tx_hash, tx) in self.pool.drain() {
-            block.push(tx_hash.clone());
-            self.stable_txs.insert(tx_hash, tx);
+        let mut block = HashMap::new();
+        for (hash, data) in self.pool.drain() {
+            block.insert(hash, data);
         }
 
         let current_height = self.blocks.len() as u32;
         println!("Miner new block: {}, txs: {}", current_height, block.len());
-        self.blocks
-            .insert(current_height, IndexBlock { txs: block });
+        self.blocks.insert(current_height, block);
     }
 
     fn get_block_height(&self) -> u32 {
         self.blocks.len() as u32
     }
 
-    fn get_block(&self, height: u32) -> Vec<TransactionView> {
+    fn get_block(&self, height: u32) -> HashMap<Byte32, MockTx> {
         if let Some(block) = self.blocks.get(&height) {
-            let mut txs = vec![];
-            for tx in &block.txs {
-                txs.push(self.stable_txs.get(tx).unwrap().clone());
-            }
-            txs
+            block.clone()
         } else {
-            vec![]
+            HashMap::new()
         }
     }
 }
@@ -199,7 +212,6 @@ impl Default for Blockchain {
         Self {
             context: Context::default(),
             pool: HashMap::new(),
-            stable_txs: HashMap::new(),
             blocks: HashMap::new(),
         }
     }

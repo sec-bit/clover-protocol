@@ -43,7 +43,6 @@ pub struct Storage<E: PairingEngine> {
 
     pub balances: Vec<u128>,
     // pub tmp_balances: Vec<u128>,
-
     pub nonces: Vec<u32>,
     pub tmp_nonces: Vec<u32>,
 
@@ -191,7 +190,7 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
 
-        let mut storage = block_storage{
+        let mut storage = block_storage {
             commit: new_commit.clone(),
             balances: HashMap::new(),
             nonces: HashMap::new(),
@@ -199,8 +198,9 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut txlist = Vec::<Transaction<E>>::new();
 
-        for tx in txs.iter(){
+        for tx in txs.iter() {
             let mut tx = tx.clone();
+
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
                     tx.balance = self.balances[from as usize];
@@ -213,7 +213,7 @@ impl<E: PairingEngine> Storage<E> {
                         if next_nonce == 0 {
                             // no proof
                             if amount as i128 > tx.balance as i128 + balance_change {
-                                continue
+                                continue;
                             }
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
@@ -261,7 +261,13 @@ impl<E: PairingEngine> Storage<E> {
                             }
                             point_state.insert(
                                 from,
-                                (addr, nonce, balance, tx.nonce + 1, balance_change - amount as i128),
+                                (
+                                    addr,
+                                    nonce,
+                                    balance,
+                                    tx.nonce + 1,
+                                    balance_change - amount as i128,
+                                ),
                             );
                         }
                     } else {
@@ -295,7 +301,13 @@ impl<E: PairingEngine> Storage<E> {
                         proofs.push(tx.proof.clone());
                         point_state.insert(
                             from,
-                            (tx.addr, tx.nonce - 1, tx.balance, tx.nonce + 1, 0 - amount  as i128),
+                            (
+                                tx.addr,
+                                tx.nonce - 1,
+                                tx.balance,
+                                tx.nonce + 1,
+                                0 - amount as i128,
+                            ),
                         );
                     }
 
@@ -311,7 +323,16 @@ impl<E: PairingEngine> Storage<E> {
 
                     if point_state.contains_key(&to) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
-                        point_state.insert(to,(addr, nonce, balance, next_nonce, balance_change + amount as i128));
+                        point_state.insert(
+                            to,
+                            (
+                                addr,
+                                nonce,
+                                balance,
+                                next_nonce,
+                                balance_change + amount as i128,
+                            ),
+                        );
                     } else {
                         point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
@@ -328,21 +349,25 @@ impl<E: PairingEngine> Storage<E> {
 
                     if storage.nonces.contains_key(&from) {
                         let nonce = storage.nonces[&from];
-                        storage.nonces.insert(from, nonce+1);
+                        storage.nonces.insert(from, nonce + 1);
                     } else {
-                        storage.nonces.insert(from, self.nonces[from as usize]+1);
+                        storage.nonces.insert(from, self.nonces[from as usize] + 1);
                     }
                     if storage.balances.contains_key(&from) {
                         let balance = storage.balances[&from];
                         storage.balances.insert(from, balance - amount);
                     } else {
-                        storage.balances.insert(from, self.balances[from as usize] - amount);
+                        storage
+                            .balances
+                            .insert(from, self.balances[from as usize] - amount);
                     }
                     if storage.balances.contains_key(&to) {
                         let balance = storage.balances[&to];
                         storage.balances.insert(from, balance + amount);
                     } else {
-                        storage.balances.insert(from, self.balances[to as usize] + amount);
+                        storage
+                            .balances
+                            .insert(from, self.balances[to as usize] + amount);
                     }
 
                     txlist.push(tx);
@@ -353,24 +378,10 @@ impl<E: PairingEngine> Storage<E> {
                     let origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
 
                     let from_upk = &self.params.proving_key.update_keys[account as usize];
-                    if account >= self.next_user {
+                    if account > self.next_user {
                         continue;
                     }
                     if point_state.contains_key(&account) {
-                        continue;
-                    }
-                    if let Ok(res) = verify_pos::<E>(
-                        &self.params.verification_key,
-                        &self.commit,
-                        vec![tx.proof_param()],
-                        vec![account],
-                        &tx.proof,
-                        omega,
-                    ) {
-                        if !res {
-                            continue;
-                        }
-                    } else {
                         continue;
                     }
                     froms.push(tx.from());
@@ -436,7 +447,7 @@ impl<E: PairingEngine> Storage<E> {
 
         match tx.tx_type {
             TxType::Transfer(from, to, amount) => {
-               return None;
+                return None;
             }
             TxType::Register(account) => {
                 return None;
@@ -447,18 +458,16 @@ impl<E: PairingEngine> Storage<E> {
                 let from_upk = &self.params.proving_key.update_keys[from as usize];
                 let amount_fr: E::Fr = u128_to_fr::<E>(amount);
                 new_commit =
-                    update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n)
-                        .unwrap();
+                    update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n).unwrap();
                 txlist.push(tx);
             }
             TxType::Withdraw(from, amount) => {
                 tx.balance = self.balances[from as usize];
                 tx.proof = self.proofs[from as usize].clone();
                 let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                origin_proof_params += &(E::Fr::from_repr(
-                    <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                )
-                .mul(&E::Fr::from(2).pow(&[128])));
+                origin_proof_params +=
+                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1))
+                        .mul(&E::Fr::from(2).pow(&[128])));
                 origin_proof_params +=
                     &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(tx.balance)));
 
@@ -490,7 +499,7 @@ impl<E: PairingEngine> Storage<E> {
                 txlist.push(tx);
             }
         }
- 
+
         let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
 
         let block = Block {
@@ -503,7 +512,6 @@ impl<E: PairingEngine> Storage<E> {
 
         Some(block)
     }
-    
 
     /// miner new block.
     pub fn create_block(&mut self) -> Option<Block<E>> {
@@ -527,19 +535,22 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut storage = self.tmp_storages[&block.block_height].clone();
         let mut cvalues = HashMap::<u32, E::Fr>::new();
-        for (account, balance) in storage.balances.drain(){
-            let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(balance - &self.balances[account as usize]));
+        for (account, balance) in storage.balances.drain() {
+            let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
+                balance - &self.balances[account as usize],
+            ));
             cvalues.insert(account, cv);
             self.balances[account as usize] = balance;
         }
-        for (account, nonce) in storage.nonces.drain(){
+        for (account, nonce) in storage.nonces.drain() {
             let mut cv = E::Fr::zero();
             if cvalues.contains_key(&account) {
                 cv = cvalues[&account];
             }
-            cv += &(
-                E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from((nonce - &self.nonces[account as usize]) as u64)).mul(&E::Fr::from(2).pow(&[128]))
-            );
+            cv += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(
+                (nonce - &self.nonces[account as usize]) as u64,
+            ))
+            .mul(&E::Fr::from(2).pow(&[128])));
             cvalues.insert(account, cv);
             self.nonces[account as usize] = nonce;
         }
@@ -566,11 +577,12 @@ impl<E: PairingEngine> Storage<E> {
 
                     cv += &tx.addr.mul(&E::Fr::from(2).pow(&[160]));
                     cvalues.insert(account, cv);
+
+                    self.next_user += 1;
                 }
                 _ => continue,
             }
         }
-        
 
         update_proofs::<E>(
             &self.params.proving_key.update_keys,
@@ -582,9 +594,9 @@ impl<E: PairingEngine> Storage<E> {
         .unwrap();
 
         self.block_height = block.block_height;
-        let mut removes=Vec::new();
-        for (height, storage) in self.tmp_storages.drain(){
-            if height <=  block.block_height{
+        let mut removes = Vec::new();
+        for (height, storage) in self.tmp_storages.drain() {
+            if height <= block.block_height {
                 removes.push(height)
                 // self.tmp_storages.remove(&height);
             }
@@ -592,15 +604,17 @@ impl<E: PairingEngine> Storage<E> {
         for i in removes.iter() {
             self.tmp_storages.remove(&i);
         }
+
+        println!("HANDLE BLOCK OVER");
     }
 
     pub fn sync_block(&mut self, block: Block<E>) {
-        println!("HANDLE BLOCK: {}", block.block_height);
-        if block.block_height <=  self.block_height{
+        println!("HANDLE SYNC BLOCK: {}", block.block_height);
+        if block.block_height <= self.block_height {
             return;
         }
 
-        if  block.block_height >  self.block_height + 1 {
+        if block.block_height > self.block_height + 1 {
             // error
             return;
         }
@@ -608,7 +622,7 @@ impl<E: PairingEngine> Storage<E> {
             //error
             return;
         }
-        
+
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
         let mut new_commit = self.commit.clone();
@@ -617,21 +631,27 @@ impl<E: PairingEngine> Storage<E> {
         let mut cvalues = HashMap::<u32, E::Fr>::new();
         match tx.tx_type {
             TxType::Deposit(from, amount) => {
-                self.balances[from as usize].add(amount);
-                cvalues.insert(from as u32, E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)));
+                self.balances[from as usize] += amount;
+                cvalues.insert(
+                    from as u32,
+                    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)),
+                );
             }
             TxType::Withdraw(from, amount) => {
-                self.balances[from as usize].sub(amount);
-                cvalues.insert(from as u32, E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)).neg());
+                self.balances[from as usize] -= amount;
+                cvalues.insert(
+                    from as u32,
+                    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)).neg(),
+                );
             }
-            TxType::Register(account) => {
+            TxType::Register(_account) => {
                 return;
             }
             TxType::Transfer(from, to, amount) => {
                 return;
             }
         }
-        
+
         self.block_height = block.block_height;
         self.commit = block.new_commit;
 
@@ -641,8 +661,8 @@ impl<E: PairingEngine> Storage<E> {
             &mut self.proofs,
             &cvalues,
             n as usize,
-        ).unwrap();
-
+        )
+        .unwrap();
     }
 
     /// if send to L1 failure, revert the block's txs.

@@ -56,7 +56,7 @@ pub async fn deploy_contract(name: &str) -> Result<(String, String, String, Stri
 pub async fn listen_blocks(
     block_height: u64,
     rollup_hash: &String,
-) -> Result<(Vec<(Vec<u8>, String, String, Option<(String, u128)>)>, u64), ()> {
+) -> Result<Vec<(Vec<(Vec<u8>, String, String, Option<(String, u128)>)>, u64)>, ()> {
     let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
 
     //get_tip_block_number
@@ -84,15 +84,15 @@ pub async fn listen_blocks(
     println!("now_height: {:?}", now_height);
 
     if now_height <= block_height {
-        return Ok((vec![], block_height));
+        return Ok(vec![]);
     }
 
     let mut blocks = vec![];
-    let mut change_block_height = block_height;
 
     for i in block_height..now_height {
-        change_block_height = i;
-        println!("START GOT BLOCK: {}", change_block_height);
+        println!("START GOT BLOCK: {}", i);
+
+        let mut tmp_block = vec![];
 
         // get block info
         if let Ok(mut res) = surf::post(NODE_RPC_ADDR)
@@ -103,46 +103,52 @@ pub async fn listen_blocks(
             let result = res.body_json::<Value>().await.map_err(|_| ())?;
             let transactions = result["result"].as_array().ok_or(())?;
 
-            for tx in transactions {
-                let tx =
-                    TransactionView::from_slice(&hex::decode(tx.as_str().unwrap()).unwrap()[..])
-                        .unwrap()
-                        .unpack();
+            for mock_tx in transactions {
+                let cells = mock_tx.as_array().unwrap();
 
-                let tx_hash = tx.hash();
+                let first_cell = cells[0].as_array().unwrap();
 
-                if let Some(out) = tx.outputs().get(0) {
-                    if out.lock() == rollup_lock {
-                        let mut block_data = tx.outputs_data().get(0).unwrap().as_slice().to_vec();
-                        let commit_cell_point =
-                            hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice());
-                        let upk_cell_point =
-                            hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice());
-                        let udt_cell = match block_data.remove(0) {
-                            1u8 | 2u8 => {
-                                let mut u128_bytes = [0u8; 16];
-                                u128_bytes
-                                    .copy_from_slice(tx.outputs_data().get(2).unwrap().as_slice());
-                                let amount = u128::from_le_bytes(u128_bytes);
-                                let udt_cell_point =
-                                    hex::encode(OutPoint::new(tx_hash, 2u32).as_slice());
+                let first_lock = Script::new_unchecked(
+                    hex::decode(first_cell[0].as_str().unwrap()).unwrap().into(),
+                );
+                let first_point = first_cell[1].as_str().unwrap().to_owned();
+                let first_data = hex::decode(first_cell[2].as_str().unwrap()).unwrap();
 
-                                Some((udt_cell_point, amount))
-                            }
-                            _ => None,
-                        };
+                if first_lock == rollup_lock {
+                    let mut block_data = first_data;
+                    let commit_cell_point = first_point;
+                    let upk_cell_point =
+                        cells[1].as_array().unwrap()[1].as_str().unwrap().to_owned();
 
-                        blocks.push((block_data, commit_cell_point, upk_cell_point, udt_cell))
-                    }
+                    let udt_cell = match block_data.remove(0) {
+                        1u8 | 2u8 => {
+                            let udt_cell = cells[2].as_array().unwrap();
+
+                            let mut u128_bytes = [0u8; 16];
+                            u128_bytes.copy_from_slice(
+                                &hex::decode(udt_cell[2].as_str().unwrap()).unwrap(),
+                            );
+                            let amount = u128::from_le_bytes(u128_bytes);
+                            let udt_cell_point = udt_cell[1].as_str().unwrap().to_owned();
+                            Some((udt_cell_point, amount))
+                        }
+                        _ => None,
+                    };
+
+                    tmp_block.push((block_data, commit_cell_point, upk_cell_point, udt_cell));
                 }
             }
         } else {
             println!("ERROR------------");
             break;
         }
+
+        if tmp_block.len() != 0 {
+            blocks.push((tmp_block, i));
+        }
     }
 
-    Ok((blocks, change_block_height))
+    Ok(blocks)
 }
 
 pub async fn _listen_true_blocks(block_height: u64) -> Result<(Vec<Vec<u8>>, u64), ()> {
@@ -234,7 +240,7 @@ pub async fn init_state(
         .lock(rollup_lock.clone())
         .build();
     let init_upk = CellOutput::new_builder()
-        .capacity(input_ckb.pack())
+        .capacity(Capacity::bytes(3000).unwrap().as_u64().pack())
         .lock(rollup_lock.clone())
         .build();
     let init_udt = CellOutput::new_builder()
@@ -320,7 +326,7 @@ pub async fn send_deposit(
         .lock(rollup_lock.clone())
         .build();
     let upk_cell = CellOutput::new_builder()
-        .capacity(input_ckb.pack())
+        .capacity(Capacity::bytes(3000).unwrap().as_u64().pack())
         .lock(rollup_lock.clone())
         .build();
     let udt_cell = CellOutput::new_builder()
@@ -408,7 +414,7 @@ pub async fn send_withdraw(
         .lock(rollup_lock.clone())
         .build();
     let upk_cell = CellOutput::new_builder()
-        .capacity(input_ckb.pack())
+        .capacity(Capacity::bytes(3000).unwrap().as_u64().pack())
         .lock(rollup_lock.clone())
         .build();
     let udt_cell = CellOutput::new_builder()
@@ -487,7 +493,7 @@ pub async fn send_block(
         .lock(rollup_lock.clone())
         .build();
     let upk_cell = CellOutput::new_builder()
-        .capacity(input_ckb.pack())
+        .capacity(Capacity::bytes(3000).unwrap().as_u64().pack())
         .lock(rollup_lock.clone())
         .build();
 
@@ -499,7 +505,7 @@ pub async fn send_block(
         all_upks.extend_from_slice(&mut upk[..]);
     }
 
-    let mut true_commit = vec![0u8];
+    let mut true_commit = vec![3u8];
     true_commit.extend_from_slice(&mut commit[..]);
 
     let outputs_data: Vec<Bytes> = vec![true_commit.into(), all_upks.into()];

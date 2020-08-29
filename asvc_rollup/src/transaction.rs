@@ -9,7 +9,7 @@ use ckb_zkp::{
 
 use crate::{String, Vec};
 
-pub const ACCOUNT_SIZE: usize = 16;
+pub const ACCOUNT_SIZE: usize = 2;
 
 pub type TxHash = Vec<u8>;
 
@@ -68,7 +68,7 @@ impl<E: PairingEngine> FullPubKey<E> {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum TxType {
     /// to_account, amount.
     Deposit(u32, u128),
@@ -143,24 +143,6 @@ impl<E: PairingEngine> Transaction<E> {
         tx.sign(sk);
 
         tx
-    }
-
-    pub fn proof_param(&self) -> E::Fr {
-        let mut bytes = Vec::new();
-        self.addr.write(&mut bytes).unwrap();
-        (self.nonce-1).write(&mut bytes).unwrap();
-        self.balance.to_le_bytes().write(&mut bytes).unwrap();
-
-        mimc::hash(&bytes)
-    }
-
-    pub fn static_proof_param(fpk: &FullPubKey<E>, nonce: u32, balance: u128) -> E::Fr {
-        let mut bytes = Vec::new();
-        fpk.addr().write(&mut bytes).unwrap();
-        nonce.write(&mut bytes).unwrap();
-        balance.to_le_bytes().write(&mut bytes).unwrap();
-
-        mimc::hash(&bytes)
     }
 
     pub fn hash(&self) -> TxHash {
