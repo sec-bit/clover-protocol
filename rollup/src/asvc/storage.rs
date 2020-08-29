@@ -19,7 +19,7 @@ pub struct block_storage<E: PairingEngine> {
     // pub next_user: u32,
     pub balances: HashMap<u32, u128>,
     pub nonces: HashMap<u32, u32>,
-    pub txhashes: Vec<TxHash>,
+    // pub txhashes: Vec<TxHash>,
 }
 
 pub struct Storage<E: PairingEngine> {
@@ -170,7 +170,7 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     /// deposit & withdraw use when operate on L1, need build a block to change.
-    pub fn build_block(&mut self, txs: &mut HashMap<TxHash, Transaction<E>>) -> Option<Block<E>> {
+    pub fn build_block(&mut self, txs: Vec<Transaction<E>>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
@@ -195,23 +195,18 @@ impl<E: PairingEngine> Storage<E> {
             commit: new_commit.clone(),
             balances: HashMap::new(),
             nonces: HashMap::new(),
-            txhashes: Vec::new(),
         };
 
-        let mut txlist = Vec::new();
+        let mut txlist = Vec::<Transaction<E>>::new();
 
-        for (txhash, mut tx) in txs.drain(){
+        for tx in txs.iter(){
+            let mut tx = tx.clone();
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
                     tx.balance = self.balances[from as usize];
                     tx.proof = self.proofs[from as usize].clone();
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
                     let from_upk = &self.params.proving_key.update_keys[from as usize];
-
-                    if to >= self.tmp_next_user {
-                        self.pools.remove(&txhash);
-                        continue;
-                    }
 
                     if point_state.contains_key(&from) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&from];
@@ -260,9 +255,6 @@ impl<E: PairingEngine> Storage<E> {
                             // proved
                             if amount as i128 > tx.balance as i128 + balance_change {
                                 continue;
-                            }
-                            if tx.nonce < next_nonce {
-                                self.pools.remove(&txhash);
                             }
                             if tx.nonce != next_nonce {
                                 continue;
@@ -354,7 +346,6 @@ impl<E: PairingEngine> Storage<E> {
                     }
 
                     txlist.push(tx);
-                    storage.txhashes.push(txhash);
                 }
                 TxType::Register(account) => {
                     tx.balance = self.balances[account as usize];
@@ -403,13 +394,12 @@ impl<E: PairingEngine> Storage<E> {
                     storage.commit = new_commit.clone();
 
                     txlist.push(tx);
-                    storage.txhashes.push(txhash);
                 }
                 TxType::Deposit(from, amount) => {
-                    self.pools.remove(&txhash);
+                    return None;
                 }
                 TxType::Withdraw(from, amount) => {
-                    self.pools.remove(&txhash);
+                    return None;
                 }
             }
         }
@@ -522,9 +512,9 @@ impl<E: PairingEngine> Storage<E> {
             return None;
         }
 
-        // let txs = self.pools.drain().map(|(_k, v)| v).collect();
-        let mut txs = self.pools.clone();
-        self.build_block(&mut txs)
+        let txs = self.pools.drain().map(|(_k, v)| v).collect();
+        // let mut txs = self.pools.clone();
+        self.build_block(txs)
     }
 
     /// handle when the block commit to L1.
@@ -552,10 +542,6 @@ impl<E: PairingEngine> Storage<E> {
             );
             cvalues.insert(account, cv);
             self.nonces[account as usize] = nonce;
-        }
-
-        for hash in storage.txhashes.iter(){
-            self.pools.remove(hash);
         }
 
         // change register full_pubkey
