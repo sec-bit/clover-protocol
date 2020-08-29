@@ -468,9 +468,14 @@ impl<E: PairingEngine> Storage<E> {
             nonce.write(&mut bytes).unwrap();
             balance.to_le_bytes().write(&mut bytes).unwrap();
 
+            let mut proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
+            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64)).mul(&E::Fr::from(2).pow(&[128])));
+            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
+
+
             let res = olds
                 .get_mut(&(u as u32))
-                .map(|i| mimc::hash::<E::Fr>(&bytes).sub(i))
+                .map(|i| proof_params.sub(i))
                 .unwrap();
 
             cvalues.insert(u as u32, res);

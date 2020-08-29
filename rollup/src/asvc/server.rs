@@ -268,7 +268,7 @@ struct WithdrawRequest {
     pub psk: String,
 }
 
-/// wallet withddraw api. build tx and send to ckb.
+/// wallet withdraw api. build tx and send to ckb.
 async fn withdraw<E: PairingEngine>(
     mut req: Request<Arc<Mutex<Storage<E>>>>,
 ) -> Result<String, Error> {
