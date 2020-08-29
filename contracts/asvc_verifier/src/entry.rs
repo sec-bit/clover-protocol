@@ -320,27 +320,17 @@ fn verify(
 ) -> Result<(), Error> {
     debug!("change: {}{}", if is_add { "+" } else { "-" }, change);
 
-    //return Ok(());
-
     pre.remove(0);
     now.remove(0);
 
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
-    debug!("pre_block is ok");
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
     }
-    debug!("pre_block new_commit == now_block commit");
 
     let cell_upks = CellUpks::<Bn_256>::from_bytes(&upk[..]).unwrap();
-
-    debug!(
-        "cell upks is ok omega: {:?}, len: {}",
-        cell_upks.omega,
-        cell_upks.upks.len()
-    );
 
     let mut udt_change = change as i128;
     if !is_add {
