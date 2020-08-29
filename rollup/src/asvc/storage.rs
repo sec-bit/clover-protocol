@@ -557,11 +557,21 @@ impl<E: PairingEngine> Storage<E> {
         let mut storage = self.tmp_storages[&block.block_height].clone();
         let mut cvalues = HashMap::<u32, E::Fr>::new();
         for (account, balance) in storage.balances.drain() {
-            let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
-                balance - &self.balances[account as usize],
-            ));
-            cvalues.insert(account, cv);
-            self.balances[account as usize] = balance;
+            println!("account={}， balance={}, self.balances[account as usize]={}", account, balance, self.balances[account as usize]);
+        
+            if  balance >= self.balances[account as usize]{
+                let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
+                    balance - &self.balances[account as usize],
+                ));
+                cvalues.insert(account, cv);
+                self.balances[account as usize] = balance;
+            } else {
+                let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
+                    self.balances[account as usize] - &balance,
+                )).neg();
+                cvalues.insert(account, cv);
+                self.balances[account as usize] = balance;
+            }
         }
         for (account, nonce) in storage.nonces.drain() {
             let mut cv = E::Fr::zero();
