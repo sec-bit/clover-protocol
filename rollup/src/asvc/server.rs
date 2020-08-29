@@ -474,6 +474,14 @@ async fn setup<E: PairingEngine>(req: Request<Arc<RwLock<Storage<E>>>>) -> Resul
     storage.my_udt = my_udt;
     storage.my_udt_amount = 100000;
 
+    let block = Block {
+        block_height: 0,
+        commit: storage.commit.clone(),
+        proof: storage.proofs[0].clone(),
+        new_commit: storage.commit.clone(),
+        txs: vec![],
+    };
+
     let mut commit_bytes = vec![];
     storage.commit.write(&mut commit_bytes).unwrap();
 
@@ -498,7 +506,7 @@ async fn setup<E: PairingEngine>(req: Request<Arc<RwLock<Storage<E>>>>) -> Resul
     if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) = init_state(
         rollup_lock,
         rollup_dep,
-        commit_bytes,
+        block.to_bytes(),
         vk_bytes,
         omega,
         upks_bytes,
