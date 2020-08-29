@@ -29,25 +29,29 @@ async fn listen_contracts<E: PairingEngine>(
 
     loop {
         // 10s to read lastest block to check if block has deposit tx.
-        task::sleep(Duration::from_secs(1000)).await;
+        task::sleep(Duration::from_secs(10)).await;
         println!(
             "Listen Task: start read block's txs. Current block height: {}",
             l1_block_height
         );
 
-        let rollup_lock = &storage.read().await.rollup_lock;
+        let read_storage = storage.read().await;
+        let rollup_lock = &read_storage.rollup_lock;
 
         if let Ok((blocks, new_height)) = listen_blocks(l1_block_height, rollup_lock).await {
+            drop(read_storage);
             for (bytes, new_commit, new_upk, is_new_udt) in blocks {
                 if let Ok(block) = Block::from_bytes(&bytes[..]) {
-                    storage.write().await.handle_block(block);
+                    let mut write_storage = storage.write().await;
+                    write_storage.handle_block(block);
 
-                    storage.write().await.commit_cell = new_commit;
-                    storage.write().await.upk_cell = new_upk;
+                    write_storage.commit_cell = new_commit;
+                    write_storage.upk_cell = new_upk;
                     if let Some((new_udt, amount)) = is_new_udt {
-                        storage.write().await.udt_cell = new_udt;
-                        storage.write().await.total_udt_amount = amount;
+                        write_storage.udt_cell = new_udt;
+                        write_storage.total_udt_amount = amount;
                     }
+                    drop(write_storage);
                 }
             }
 
@@ -63,15 +67,18 @@ async fn listen_contracts<E: PairingEngine>(
 
 /// Miner task.
 async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(), std::io::Error> {
+    let read_storage = storage.write().await;
+
+    let vk = read_storage.params.verification_key.clone();
+    let upks = read_storage.params.proving_key.update_keys.clone();
+    let omega = read_storage.omega.clone();
+    drop(read_storage);
+
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
 
         let mut write_storage = storage.write().await;
-
-        let vk = write_storage.params.verification_key.clone();
-        let upks = write_storage.params.proving_key.update_keys.clone();
-        let omega = write_storage.omega.clone();
 
         if let Some(block) = write_storage.create_block() {
             println!("SUCCESS MINER A BLOCK");
@@ -123,6 +130,8 @@ async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(),
                 write_storage.revert_block(block);
             }
         }
+
+        drop(write_storage);
     }
 }
 
@@ -159,17 +168,23 @@ async fn register<E: PairingEngine>(
 
     let tx_id = tx.id();
 
-    if req.state().write().await.try_insert_tx(tx) {
+    drop(read_storage);
+
+    let mut write_storage = req.state().write().await;
+
+    if write_storage.try_insert_tx(tx) {
+        drop(write_storage);
         Ok(tx_id)
     } else {
+        drop(write_storage);
         Ok("Invalid Tx".to_owned())
     }
 }
 
 #[derive(Serialize, Deserialize)]
 struct DepositRequest {
-    pub to: u32,
-    pub amount: u128,
+    pub to: String,
+    pub amount: String,
     pub psk: String,
 }
 
@@ -179,8 +194,8 @@ async fn deposit<E: PairingEngine>(
 ) -> Result<String, Error> {
     let params: DepositRequest = req.body_json().await?;
     let (from, amount, sk) = (
-        params.to,
-        params.amount,
+        params.to.parse().unwrap(),
+        params.amount.parse().unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
@@ -199,6 +214,8 @@ async fn deposit<E: PairingEngine>(
     let proof = read_storage.user_proof(from);
 
     let tx = Transaction::<E>::new_deposit(from, amount, fpk, nonce, balance, proof, &sk);
+
+    drop(read_storage);
 
     let mut write_storage = req.state().write().await;
 
@@ -256,19 +273,22 @@ async fn deposit<E: PairingEngine>(
             write_storage.my_udt = new_my_udt;
             write_storage.my_udt_amount -= amount;
 
+            drop(write_storage);
             Ok(tx_id)
         } else {
+            drop(write_storage);
             Ok("Send Tx Failure".to_owned())
         }
     } else {
+        drop(write_storage);
         Ok("Invalid Tx".to_owned())
     }
 }
 
 #[derive(Serialize, Deserialize)]
 struct WithdrawRequest {
-    pub from: u32,
-    pub amount: u128,
+    pub from: String,
+    pub amount: String,
     pub psk: String,
 }
 
@@ -278,8 +298,8 @@ async fn withdraw<E: PairingEngine>(
 ) -> Result<String, Error> {
     let params: WithdrawRequest = req.body_json().await?;
     let (from, amount, sk) = (
-        params.from,
-        params.amount,
+        params.from.parse().unwrap(),
+        params.amount.parse().unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
@@ -307,6 +327,7 @@ async fn withdraw<E: PairingEngine>(
 
     let tx = Transaction::<E>::new_withdraw(from, amount, fpk, nonce, balance, proof, &sk);
 
+    drop(read_storage);
     let mut write_storage = req.state().write().await;
 
     if let Some(block) = write_storage.build_block(vec![tx]) {
@@ -357,20 +378,23 @@ async fn withdraw<E: PairingEngine>(
             write_storage.upk_cell = new_upk_cell;
             write_storage.udt_cell = new_udt_cell;
 
+            drop(write_storage);
             Ok(tx_id)
         } else {
+            drop(write_storage);
             Ok("Send Tx Failure".to_owned())
         }
     } else {
+        drop(write_storage);
         Ok("Invalid Tx".to_owned())
     }
 }
 
 #[derive(Serialize, Deserialize)]
 struct TransferRequest {
-    pub from: u32,
-    pub to: u32,
-    pub amount: u128,
+    pub from: String,
+    pub to: String,
+    pub amount: String,
     pub psk: String,
 }
 
@@ -380,9 +404,9 @@ async fn transfer<E: PairingEngine>(
 ) -> Result<String, Error> {
     let params: TransferRequest = req.body_json().await?;
     let (from, to, amount, psk) = (
-        params.from,
-        params.to,
-        params.amount,
+        params.from.parse().unwrap(),
+        params.to.parse().unwrap(),
+        params.amount.parse().unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
@@ -417,9 +441,13 @@ async fn transfer<E: PairingEngine>(
 
     let tx_hash_id = tx.id();
 
-    if req.state().write().await.try_insert_tx(tx) {
+    drop(read_storage);
+    let mut write_storage = req.state().write().await;
+    if write_storage.try_insert_tx(tx) {
+        drop(write_storage);
         Ok(tx_hash_id)
     } else {
+        drop(write_storage);
         Ok("Invalid Tx".to_owned())
     }
 }

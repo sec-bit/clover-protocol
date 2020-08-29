@@ -28,7 +28,9 @@ async fn miner(blockchain: Arc<RwLock<Blockchain>>) -> Result<(), std::io::Error
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
 
-        blockchain.write().await.miner_block();
+        let mut write_storage = blockchain.write().await;
+        write_storage.miner_block();
+        drop(write_storage);
     }
 }
 
