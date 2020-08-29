@@ -44,7 +44,7 @@ async fn listen_contracts<E: PairingEngine>(
             for (bytes, new_commit, new_upk, is_new_udt) in blocks {
                 if let Ok(block) = Block::from_bytes(&bytes[..]) {
                     let mut write_storage = storage.write().await;
-                    write_storage.handle_block(block);
+                    write_storage.sync_block(block);
 
                     write_storage.commit_cell = new_commit;
                     write_storage.upk_cell = new_upk;
@@ -212,7 +212,7 @@ async fn deposit<E: PairingEngine>(
 
     let mut write_storage = req.state().write().await;
 
-    if let Some(block) = write_storage.build_block(vec![tx]) {
+    if let Some(block) = write_storage.build_block_by_user(tx) {
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;
         let success_hash: &String = &write_storage.udt_lock;
@@ -323,7 +323,7 @@ async fn withdraw<E: PairingEngine>(
     drop(read_storage);
     let mut write_storage = req.state().write().await;
 
-    if let Some(block) = write_storage.build_block(vec![tx]) {
+    if let Some(block) = write_storage.build_block_by_user(tx) {
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;
         let success_hash: &String = &write_storage.udt_lock;

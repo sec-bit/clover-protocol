@@ -1,4 +1,5 @@
 use ckb_zkp::curve::Field;
+use ckb_zkp::gadgets::mimc;
 use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes, Zero};
 use ckb_zkp::scheme::asvc::{
     aggregate_proofs, update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey,
@@ -12,8 +13,18 @@ use super::asvc::update_proofs;
 use asvc_rollup::block::Block;
 use asvc_rollup::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType, ACCOUNT_SIZE};
 
+#[derive(Clone)]
+pub struct block_storage<E: PairingEngine> {
+    pub commit: Commitment<E>,
+    // pub next_user: u32,
+    pub balances: HashMap<u32, u128>,
+    pub nonces: HashMap<u32, u32>,
+    pub txhashes: Vec<TxHash>,
+}
+
 pub struct Storage<E: PairingEngine> {
     pub block_height: u32,
+    pub tmp_block_height: u32,
     pub blocks: Vec<Block<E>>,
     pub pools: HashMap<TxHash, Transaction<E>>,
 
@@ -31,10 +42,12 @@ pub struct Storage<E: PairingEngine> {
     pub tmp_next_user: u32,
 
     pub balances: Vec<u128>,
-    pub tmp_balances: Vec<u128>,
+    // pub tmp_balances: Vec<u128>,
 
     pub nonces: Vec<u32>,
     pub tmp_nonces: Vec<u32>,
+
+    pub tmp_storages: HashMap<u32, block_storage<E>>,
 
     pub rollup_lock: String,
     pub rollup_dep: String,
@@ -60,6 +73,7 @@ impl<E: PairingEngine> Storage<E> {
 
         Self {
             block_height: 0,
+            tmp_block_height: 0,
             omega: domain.group_gen,
             blocks: vec![],
             pools: HashMap::new(),
@@ -69,10 +83,11 @@ impl<E: PairingEngine> Storage<E> {
             next_user: 0u32,
             tmp_next_user: 0u32,
             balances: vec![0u128; ACCOUNT_SIZE],
-            tmp_balances: vec![0u128; ACCOUNT_SIZE],
+            // tmp_balances: vec![0u128; ACCOUNT_SIZE],
             nonces: vec![0u32; ACCOUNT_SIZE],
             tmp_nonces: vec![0u32; ACCOUNT_SIZE],
             full_pubkeys: full_pubkeys,
+            tmp_storages: HashMap::new(),
 
             rollup_lock: String::new(),
             rollup_dep: String::new(),
@@ -116,7 +131,8 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     pub fn user_balance(&self, u: u32) -> u128 {
-        self.tmp_balances[u as usize]
+        // self.tmp_balances[u as usize]
+        self.balances[u as usize]
     }
 
     pub fn try_insert_tx(&mut self, tx: Transaction<E>) -> bool {
@@ -154,7 +170,7 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     /// deposit & withdraw use when operate on L1, need build a block to change.
-    pub fn build_block(&mut self, txs: Vec<Transaction<E>>) -> Option<Block<E>> {
+    pub fn build_block(&mut self, txs: &mut HashMap<TxHash, Transaction<E>>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
@@ -175,13 +191,25 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
 
-        for tx in &txs {
+        let mut storage = block_storage{
+            commit: new_commit.clone(),
+            balances: HashMap::new(),
+            nonces: HashMap::new(),
+            txhashes: Vec::new(),
+        };
+
+        let mut txlist = Vec::new();
+
+        for (txhash, mut tx) in txs.drain(){
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
+                    tx.balance = self.balances[from as usize];
+                    tx.proof = self.proofs[from as usize].clone();
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
                     let from_upk = &self.params.proving_key.update_keys[from as usize];
 
-                    if to >= self.next_user {
+                    if to >= self.tmp_next_user {
+                        self.pools.remove(&txhash);
                         continue;
                     }
 
@@ -190,7 +218,7 @@ impl<E: PairingEngine> Storage<E> {
                         if next_nonce == 0 {
                             // no proof
                             if amount as i128 > tx.balance as i128 + balance_change {
-                                continue;
+                                continue
                             }
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
@@ -233,18 +261,15 @@ impl<E: PairingEngine> Storage<E> {
                             if amount as i128 > tx.balance as i128 + balance_change {
                                 continue;
                             }
+                            if tx.nonce < next_nonce {
+                                self.pools.remove(&txhash);
+                            }
                             if tx.nonce != next_nonce {
                                 continue;
                             }
                             point_state.insert(
                                 from,
-                                (
-                                    addr,
-                                    nonce,
-                                    balance,
-                                    tx.nonce + 1,
-                                    balance_change - amount as i128,
-                                ),
+                                (addr, nonce, balance, tx.nonce + 1, balance_change - amount as i128),
                             );
                         }
                     } else {
@@ -278,13 +303,7 @@ impl<E: PairingEngine> Storage<E> {
                         proofs.push(tx.proof.clone());
                         point_state.insert(
                             from,
-                            (
-                                tx.addr,
-                                tx.nonce - 1,
-                                tx.balance,
-                                tx.nonce + 1,
-                                0 - amount as i128,
-                            ),
+                            (tx.addr, tx.nonce - 1, tx.balance, tx.nonce + 1, 0 - amount  as i128),
                         );
                     }
 
@@ -300,16 +319,7 @@ impl<E: PairingEngine> Storage<E> {
 
                     if point_state.contains_key(&to) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
-                        point_state.insert(
-                            to,
-                            (
-                                addr,
-                                nonce,
-                                balance,
-                                next_nonce,
-                                balance_change + amount as i128,
-                            ),
-                        );
+                        point_state.insert(to,(addr, nonce, balance, next_nonce, balance_change + amount as i128));
                     } else {
                         point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
@@ -324,11 +334,31 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .unwrap();
 
-                    self.tmp_balances[from as usize] -= amount;
-                    self.tmp_balances[to as usize] += amount;
-                    self.tmp_nonces[from as usize] += 1;
+                    if storage.nonces.contains_key(&from) {
+                        let nonce = storage.nonces[&from];
+                        storage.nonces.insert(from, nonce+1);
+                    } else {
+                        storage.nonces.insert(from, self.nonces[from as usize]+1);
+                    }
+                    if storage.balances.contains_key(&from) {
+                        let balance = storage.balances[&from];
+                        storage.balances.insert(from, balance - amount);
+                    } else {
+                        storage.balances.insert(from, self.balances[from as usize] - amount);
+                    }
+                    if storage.balances.contains_key(&to) {
+                        let balance = storage.balances[&to];
+                        storage.balances.insert(from, balance + amount);
+                    } else {
+                        storage.balances.insert(from, self.balances[to as usize] + amount);
+                    }
+
+                    txlist.push(tx);
+                    storage.txhashes.push(txhash);
                 }
                 TxType::Register(account) => {
+                    tx.balance = self.balances[account as usize];
+                    tx.proof = self.proofs[account as usize].clone();
                     let origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
 
                     let from_upk = &self.params.proving_key.update_keys[account as usize];
@@ -368,67 +398,122 @@ impl<E: PairingEngine> Storage<E> {
                     .unwrap();
 
                     self.tmp_next_user += 1;
-                    self.tmp_nonces[account as usize] = 1; // account first tx is register.
+                    storage.nonces.insert(account, 1);
+                    storage.balances.insert(account, 0);
+                    storage.commit = new_commit.clone();
+
+                    txlist.push(tx);
+                    storage.txhashes.push(txhash);
                 }
                 TxType::Deposit(from, amount) => {
-                    let from_upk = &self.params.proving_key.update_keys[from as usize];
-                    let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-                    // TODO:
-                    // froms.push(tx.from());
-                    // proofs.push(tx.proof);
-                    new_commit =
-                        update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n)
-                            .unwrap();
+                    self.pools.remove(&txhash);
                 }
                 TxType::Withdraw(from, amount) => {
-                    let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                    origin_proof_params += &(E::Fr::from_repr(
-                        <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                    )
-                    .mul(&E::Fr::from(2).pow(&[128])));
-                    origin_proof_params +=
-                        &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(tx.balance)));
-
-                    let from_upk = &self.params.proving_key.update_keys[from as usize];
-                    let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-
-                    if let Ok(res) = verify_pos::<E>(
-                        &self.params.verification_key,
-                        &self.commit,
-                        vec![origin_proof_params],
-                        vec![from],
-                        &tx.proof,
-                        omega,
-                    ) {
-                        if !res {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-
-                    froms.push(tx.from());
-                    proofs.push(tx.proof.clone());
-
-                    new_commit =
-                        update_commit::<E>(&new_commit, amount_fr.neg(), from, from_upk, omega, n)
-                            .unwrap();
+                    self.pools.remove(&txhash);
                 }
             }
         }
 
         let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
 
+        storage.commit = new_commit.clone();
+        self.tmp_storages.insert(self.block_height + 1, storage);
+
         let block = Block {
             proof,
-            block_height: self.block_height,
+            block_height: self.block_height + 1,
             commit: self.commit.clone(),
             new_commit: new_commit,
-            txs: txs,
+            txs: txlist,
         };
 
         Some(block)
     }
+    /// deposit & withdraw use when operate on L1, need build a block to change.
+    pub fn build_block_by_user(&mut self, tx: Transaction<E>) -> Option<Block<E>> {
+        let n = ACCOUNT_SIZE;
+        let omega = self.omega;
+
+        let mut new_commit = self.commit.clone();
+
+        let mut proofs = Vec::<Proof<E>>::new();
+        let mut froms = vec![];
+
+        let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
+
+        let mut txlist = Vec::new();
+        let mut tx = tx.clone();
+
+        match tx.tx_type {
+            TxType::Transfer(from, to, amount) => {
+               return None;
+            }
+            TxType::Register(account) => {
+                return None;
+            }
+            TxType::Deposit(from, amount) => {
+                tx.balance = self.balances[from as usize];
+                tx.proof = self.proofs[from as usize].clone();
+                let from_upk = &self.params.proving_key.update_keys[from as usize];
+                let amount_fr: E::Fr = u128_to_fr::<E>(amount);
+                new_commit =
+                    update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n)
+                        .unwrap();
+                txlist.push(tx);
+            }
+            TxType::Withdraw(from, amount) => {
+                tx.balance = self.balances[from as usize];
+                tx.proof = self.proofs[from as usize].clone();
+                let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
+                origin_proof_params += &(E::Fr::from_repr(
+                    <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
+                )
+                .mul(&E::Fr::from(2).pow(&[128])));
+                origin_proof_params +=
+                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(tx.balance)));
+
+                let from_upk = &self.params.proving_key.update_keys[from as usize];
+                let amount_fr: E::Fr = u128_to_fr::<E>(amount);
+
+                if let Ok(res) = verify_pos::<E>(
+                    &self.params.verification_key,
+                    &self.commit,
+                    vec![origin_proof_params],
+                    vec![from],
+                    &tx.proof,
+                    omega,
+                ) {
+                    if !res {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+
+                froms.push(tx.from());
+                proofs.push(tx.proof.clone());
+
+                new_commit =
+                    update_commit::<E>(&new_commit, amount_fr.neg(), from, from_upk, omega, n)
+                        .unwrap();
+
+                txlist.push(tx);
+            }
+        }
+ 
+        let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
+
+        let block = Block {
+            proof,
+            block_height: self.block_height + 1,
+            commit: self.commit.clone(),
+            new_commit: new_commit,
+            txs: txlist,
+        };
+
+        Some(block)
+    }
+    
 
     /// miner new block.
     pub fn create_block(&mut self) -> Option<Block<E>> {
@@ -437,8 +522,9 @@ impl<E: PairingEngine> Storage<E> {
             return None;
         }
 
-        let txs = self.pools.drain().map(|(_k, v)| v).collect();
-        self.build_block(txs)
+        // let txs = self.pools.drain().map(|(_k, v)| v).collect();
+        let mut txs = self.pools.clone();
+        self.build_block(&mut txs)
     }
 
     /// handle when the block commit to L1.
@@ -449,60 +535,53 @@ impl<E: PairingEngine> Storage<E> {
         self.block_height = block.block_height;
         self.commit = block.new_commit;
 
-        let mut olds = HashMap::<u32, E::Fr>::new();
+        let mut storage = self.tmp_storages[&block.block_height].clone();
         let mut cvalues = HashMap::<u32, E::Fr>::new();
+        for (account, balance) in storage.balances.drain(){
+            let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(balance - &self.balances[account as usize]));
+            cvalues.insert(account, cv);
+            self.balances[account as usize] = balance;
+        }
+        for (account, nonce) in storage.nonces.drain(){
+            let mut cv = E::Fr::zero();
+            if cvalues.contains_key(&account) {
+                cv = cvalues[&account];
+            }
+            cv += &(
+                E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from((nonce - &self.nonces[account as usize]) as u64)).mul(&E::Fr::from(2).pow(&[128]))
+            );
+            cvalues.insert(account, cv);
+            self.nonces[account as usize] = nonce;
+        }
 
-        for (u, balance) in self.balances.iter().enumerate() {
-            let addr = self.full_pubkeys[u].addr();
-            let nonce = self.nonces[u];
-
-            let mut origin_proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
-            origin_proof_params +=
-                &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64 - 1))
-                    .mul(&E::Fr::from(2).pow(&[128])));
-            origin_proof_params +=
-                &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
-
-            olds.insert(u as u32, origin_proof_params);
+        for hash in storage.txhashes.iter(){
+            self.pools.remove(hash);
         }
 
         // change register full_pubkey
         for tx in block.txs {
             match tx.tx_type {
                 TxType::Register(account) => {
-                    let upk = self.full_pubkeys[account as usize].update_key.clone();
+                    let upk = self.params.proving_key.update_keys[account as usize].clone();
 
                     self.full_pubkeys[account as usize] = FullPubKey {
                         i: account,
                         update_key: upk,
                         tradition_pubkey: tx.pubkey.clone(),
                     };
+
+                    let mut cv = E::Fr::zero();
+                    if cvalues.contains_key(&account) {
+                        cv = cvalues[&account];
+                    }
+
+                    cv += &tx.addr.mul(&E::Fr::from(2).pow(&[160]));
+                    cvalues.insert(account, cv);
                 }
                 _ => continue,
             }
         }
-
-        for (u, balance) in self.tmp_balances.iter().enumerate() {
-            let mut bytes = Vec::new();
-            let addr = self.full_pubkeys[u].addr();
-            let nonce = self.tmp_nonces[u];
-
-            addr.write(&mut bytes).unwrap();
-            nonce.write(&mut bytes).unwrap();
-            balance.to_le_bytes().write(&mut bytes).unwrap();
-
-            let mut proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
-            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64))
-                .mul(&E::Fr::from(2).pow(&[128])));
-            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
-
-            let res = olds
-                .get_mut(&(u as u32))
-                .map(|i| proof_params.sub(i))
-                .unwrap();
-
-            cvalues.insert(u as u32, res);
-        }
+        
 
         update_proofs::<E>(
             &self.params.proving_key.update_keys,
@@ -513,17 +592,68 @@ impl<E: PairingEngine> Storage<E> {
         )
         .unwrap();
 
-        self.next_user = self.tmp_next_user.clone();
-        self.balances = self.tmp_balances.clone();
-        self.nonces = self.tmp_nonces.clone();
-
-        // rebuild txs_pool
-        for (_tx_hash, tx) in self.pools.iter_mut() {
-            let u = tx.from() as usize;
-            tx.proof = self.proofs[u].clone();
-            tx.nonce = self.nonces[u].clone();
-            tx.balance = self.balances[u].clone();
+        self.block_height = block.block_height;
+        let mut removes=Vec::new();
+        for (height, storage) in self.tmp_storages.drain(){
+            if height <=  block.block_height{
+                removes.push(height)
+                // self.tmp_storages.remove(&height);
+            }
         }
+        for i in removes.iter() {
+            self.tmp_storages.remove(&i);
+        }
+    }
+
+    pub fn sync_block(&mut self, block: Block<E>) {
+        println!("HANDLE BLOCK: {}", block.block_height);
+        if block.block_height <=  self.block_height{
+            return;
+        }
+
+        if  block.block_height >  self.block_height + 1 {
+            // error
+            return;
+        }
+        if block.txs.len() != 1 {
+            //error
+            return;
+        }
+        
+        let n = ACCOUNT_SIZE;
+        let omega = self.omega;
+        let mut new_commit = self.commit.clone();
+        let tx = block.txs[0].clone();
+
+        let mut cvalues = HashMap::<u32, E::Fr>::new();
+        match tx.tx_type {
+            TxType::Deposit(from, amount) => {
+                self.balances[from as usize].add(amount);
+                cvalues.insert(from as u32, E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)));
+            }
+            TxType::Withdraw(from, amount) => {
+                self.balances[from as usize].sub(amount);
+                cvalues.insert(from as u32, E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)).neg());
+            }
+            TxType::Register(account) => {
+                return;
+            }
+            TxType::Transfer(from, to, amount) => {
+                return;
+            }
+        }
+        
+        self.block_height = block.block_height;
+        self.commit = block.new_commit;
+
+        update_proofs::<E>(
+            &self.params.proving_key.update_keys,
+            &self.commit.clone(),
+            &mut self.proofs,
+            &cvalues,
+            n as usize,
+        ).unwrap();
+
     }
 
     /// if send to L1 failure, revert the block's txs.
