@@ -1,5 +1,5 @@
 deployment = "deployment.toml"
 
 [[contracts]]
-name = "asvc_rollup"
+name = "asvc_verifier"
 template_type = "Rust"

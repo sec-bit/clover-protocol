@@ -1,12 +1,12 @@
 [package]
-name = "asvc_rollup"
+name = "asvc_verifier"
 version = "0.1.0"
 authors = ["SECBIT Labs"]
 edition = "2018"
 
 [dependencies]
-ckb-std = "0.6.0"
-asvc_rollup = { path = "../asvc_rollup" }
+ckb-std = "0.6.1"
+asvc_rollup = { path = "../../asvc_rollup" }
 ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc", "bn_256"] }
 
 [profile.release]
