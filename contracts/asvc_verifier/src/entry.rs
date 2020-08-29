@@ -1,13 +1,14 @@
 use alloc::vec::Vec;
 use core::result::Result;
 
-use asvc_rollup::block::{Block, CellUpks};
 use ckb_std::{
     ckb_constants::Source,
     debug,
     error::SysError,
     high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash, load_script_hash},
 };
+
+use asvc_rollup::block::{Block, CellUpks};
 use ckb_zkp::curve::bn_256::Bn_256;
 
 use crate::error::Error;
@@ -319,7 +320,7 @@ fn verify(
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
     debug!("pre_block is ok");
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
-    debug!("now_block is ok");
+    debug!("now_block is ok commit: {:?}", now);
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
@@ -328,13 +329,18 @@ fn verify(
 
     let cell_upks = CellUpks::<Bn_256>::from_bytes(&upk[..]).unwrap();
 
-    debug!("cell upks is ok");
+    debug!(
+        "cell upks is ok omega: {:?}, len: {}",
+        cell_upks.omega,
+        cell_upks.upks.len()
+    );
 
     let mut udt_change = change as i128;
     if !is_add {
         udt_change = -udt_change;
     }
-    match now_block.verify(&cell_upks.vk, cell_upks.omega, &cell_upks.upks) {
+
+    match now_block.verify(&cell_upks) {
         Ok(r) => {
             if r == udt_change {
                 return Ok(());
@@ -348,5 +354,9 @@ fn verify(
         _ => {
             return Err(Error::Verify);
         }
-    }
+    };
+
+    debug!("verify is ok");
+
+    Ok(())
 }

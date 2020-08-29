@@ -223,9 +223,7 @@ pub async fn init_state(
     rollup_hash: String,
     rollup_dep_hash: String,
     mut commit: Vec<u8>,
-    mut vk: Vec<u8>,
-    mut omega: Vec<u8>,
-    upks: Vec<Vec<u8>>,
+    upks: Vec<u8>,
 ) -> Result<(String, String, String, String), ()> {
     let input_ckb = Capacity::bytes(1000).unwrap().as_u64();
     let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
@@ -248,17 +246,9 @@ pub async fn init_state(
     let mut true_commit = vec![0u8];
     true_commit.extend_from_slice(&mut commit[..]);
 
-    let mut all_upks = vec![];
-    all_upks.extend_from_slice(&mut vk[..]);
-    all_upks.extend_from_slice(&mut omega[..]);
-    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
-    for mut upk in upks {
-        all_upks.extend_from_slice(&mut upk[..]);
-    }
-
     let init_outputs_data: Vec<Bytes> = vec![
         true_commit.into(),
-        all_upks.into(),
+        upks.into(),
         0u128.to_le_bytes().to_vec().into(),
     ];
 
@@ -294,9 +284,7 @@ pub async fn send_deposit(
     pre_upk_hash: &String,
     pre_udt_hash: &String,
     mut commit: Vec<u8>,
-    mut vk: Vec<u8>,
-    mut omega: Vec<u8>,
-    upks: Vec<Vec<u8>>,
+    upks: Vec<u8>,
     udt_amount: u128,
     my_udt_amount: u128,
 ) -> Result<(String, String, String, String, String), ()> {
@@ -334,20 +322,12 @@ pub async fn send_deposit(
         .lock(success_lock)
         .build();
 
-    let mut all_upks = vec![];
-    all_upks.extend_from_slice(&mut vk[..]);
-    all_upks.extend_from_slice(&mut omega[..]);
-    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
-    for mut upk in upks {
-        all_upks.extend_from_slice(&mut upk[..]);
-    }
-
     let mut true_commit = vec![1u8];
     true_commit.extend_from_slice(&mut commit[..]);
 
     let deposit_outputs_data: Vec<Bytes> = vec![
         true_commit.into(),
-        all_upks.into(),
+        upks.into(),
         udt_amount.to_le_bytes().to_vec().into(),
         my_udt_amount.to_le_bytes().to_vec().into(),
     ];
@@ -385,9 +365,7 @@ pub async fn send_withdraw(
     pre_upk_hash: &String,
     pre_udt_hash: &String,
     mut commit: Vec<u8>,
-    mut vk: Vec<u8>,
-    mut omega: Vec<u8>,
-    upks: Vec<Vec<u8>>,
+    upks: Vec<u8>,
     udt_amount: u128,
     amount: u128,
 ) -> Result<(String, String, String, String), ()> {
@@ -422,20 +400,12 @@ pub async fn send_withdraw(
         .lock(success_lock)
         .build();
 
-    let mut all_upks = vec![];
-    all_upks.extend_from_slice(&mut vk[..]);
-    all_upks.extend_from_slice(&mut omega[..]);
-    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
-    for mut upk in upks {
-        all_upks.extend_from_slice(&mut upk[..]);
-    }
-
     let mut true_commit = vec![2u8];
     true_commit.extend_from_slice(&mut commit[..]);
 
     let withdraw_outputs_data: Vec<Bytes> = vec![
         true_commit.into(),
-        all_upks.into(),
+        upks.into(),
         udt_amount.to_le_bytes().to_vec().into(),
         amount.to_le_bytes().to_vec().into(),
     ];
@@ -469,9 +439,7 @@ pub async fn send_block(
     pre_commit_hash: &String,
     pre_upk_hash: &String,
     mut commit: Vec<u8>,
-    mut vk: Vec<u8>,
-    mut omega: Vec<u8>,
-    upks: Vec<Vec<u8>>,
+    upks: Vec<u8>,
 ) -> Result<(String, String, String), ()> {
     let rollup_lock = Script::new_unchecked(hex::decode(rollup_hash).unwrap().into());
     let rollup_dep = CellDep::new_unchecked(hex::decode(rollup_dep_hash).unwrap().into());
@@ -493,18 +461,10 @@ pub async fn send_block(
         .lock(rollup_lock.clone())
         .build();
 
-    let mut all_upks = vec![];
-    all_upks.extend_from_slice(&mut vk[..]);
-    all_upks.extend_from_slice(&mut omega[..]);
-    all_upks.extend_from_slice(&mut (upks.len() as u32).to_le_bytes()[..]);
-    for mut upk in upks {
-        all_upks.extend_from_slice(&mut upk[..]);
-    }
-
     let mut true_commit = vec![3u8];
     true_commit.extend_from_slice(&mut commit[..]);
 
-    let outputs_data: Vec<Bytes> = vec![true_commit.into(), all_upks.into()];
+    let outputs_data: Vec<Bytes> = vec![true_commit.into(), upks.into()];
 
     let tx = TransactionBuilder::default()
         .inputs(vec![commit_input, upk_input])

@@ -14,6 +14,17 @@ pub struct CellUpks<E: PairingEngine> {
 }
 
 impl<E: PairingEngine> CellUpks<E> {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        self.vk.write(&mut bytes).unwrap();
+        self.omega.write(&mut bytes).unwrap();
+        (self.upks.len() as u32).write(&mut bytes).unwrap();
+        for u in &self.upks {
+            u.write(&mut bytes).unwrap();
+        }
+        bytes
+    }
+
     pub fn from_bytes(mut s: &[u8]) -> Result<Self, ()> {
         let vk = VerificationKey::read(&mut s).map_err(|_| ())?;
         let omega = E::Fr::read(&mut s).map_err(|_| ())?;
@@ -81,13 +92,8 @@ impl<E: PairingEngine> Block<E> {
         Self::from_bytes(&v[..])
     }
 
-    pub fn verify(
-        &self,
-        vk: &VerificationKey<E>,
-        omega: E::Fr,
-        upks: &Vec<UpdateKey<E>>,
-    ) -> Result<i128, String> {
-        if upks.len() != ACCOUNT_SIZE {
+    pub fn verify(&self, cell_upks: &CellUpks<E>) -> Result<i128, String> {
+        if cell_upks.upks.len() != ACCOUNT_SIZE {
             return Err(String::from("BLOCK_VERIFY: Upk length"));
         }
 
@@ -434,19 +440,19 @@ impl<E: PairingEngine> Block<E> {
                 &tmp_commit,
                 table[*point as usize].0.unwrap(),
                 *point as u32,
-                &upks[*point as usize],
-                omega,
+                &cell_upks.upks[*point as usize],
+                cell_upks.omega,
                 ACCOUNT_SIZE,
             )
             .map_err(|_| String::from("BLOCK_VERIFY: update commit failure!"))?;
         }
         verify_pos::<E>(
-            vk,
+            &cell_upks.vk,
             &self.commit,
             point_values,
             points2prove,
             &self.proof,
-            omega,
+            cell_upks.omega,
         )
         .map_err(|_| String::from("BLOCK_VERIFY: verify pos failure!"))?;
 

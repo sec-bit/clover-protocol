@@ -16,7 +16,7 @@ mod storage;
 use asvc::initialize_asvc;
 use storage::Storage;
 
-use asvc_rollup::block::Block;
+use asvc_rollup::block::{Block, CellUpks};
 use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
 use ckb_rpc::{
     deploy_contract, init_state, listen_blocks, send_block, send_deposit, send_withdraw,
@@ -75,6 +75,12 @@ async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(),
     let vk = read_storage.params.verification_key.clone();
     let upks = read_storage.params.proving_key.update_keys.clone();
     let omega = read_storage.omega.clone();
+    let cell_upks = CellUpks {
+        vk: vk,
+        omega: omega,
+        upks: upks,
+    };
+
     drop(read_storage);
 
     loop {
@@ -86,7 +92,7 @@ async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(),
         if let Some(block) = write_storage.create_block() {
             println!("SUCCESS MINER A BLOCK");
 
-            let verify_res = block.verify(&vk, omega, &upks);
+            let verify_res = block.verify(&cell_upks);
             println!("Block verify is: {:?}", verify_res);
 
             let rollup_hash: &String = &write_storage.rollup_lock;
@@ -95,32 +101,13 @@ async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(),
             let pre_upk_hash: &String = &write_storage.upk_cell;
             let block_bytes: Vec<u8> = block.to_bytes();
 
-            let mut omega = vec![];
-            write_storage.omega.write(&mut omega).unwrap();
-
-            let mut upks = vec![];
-            for upk in &write_storage.params.proving_key.update_keys {
-                let mut tmp_bytes = vec![];
-                upk.write(&mut tmp_bytes).unwrap();
-                upks.push(tmp_bytes);
-            }
-
-            let mut vk_bytes = Vec::new();
-            write_storage
-                .params
-                .verification_key
-                .write(&mut vk_bytes)
-                .unwrap();
-
             if let Ok((new_commit_cell, new_upk_cell, tx_id)) = send_block(
                 rollup_hash,
                 rollup_dep_hash,
                 pre_commit_hash,
                 pre_upk_hash,
                 block_bytes,
-                vk_bytes,
-                omega,
-                upks,
+                cell_upks.to_bytes(),
             )
             .await
             {
@@ -229,22 +216,14 @@ async fn deposit<E: PairingEngine>(
         let udt_amount: u128 = write_storage.total_udt_amount + amount;
         let my_udt_amount: u128 = write_storage.my_udt_amount - amount;
 
-        let mut omega = vec![];
-        write_storage.omega.write(&mut omega).unwrap();
-
-        let mut upks = vec![];
-        for upk in &write_storage.params.proving_key.update_keys {
-            let mut tmp_bytes = vec![];
-            upk.write(&mut tmp_bytes).unwrap();
-            upks.push(tmp_bytes);
-        }
-
-        let mut vk_bytes = Vec::new();
-        write_storage
-            .params
-            .verification_key
-            .write(&mut vk_bytes)
-            .unwrap();
+        let vk = write_storage.params.verification_key.clone();
+        let upks = write_storage.params.proving_key.update_keys.clone();
+        let omega = write_storage.omega.clone();
+        let cell_upks = CellUpks {
+            vk: vk,
+            omega: omega,
+            upks: upks,
+        };
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, new_my_udt, tx_id)) = send_deposit(
             rollup_hash,
@@ -255,9 +234,7 @@ async fn deposit<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
-            vk_bytes,
-            omega,
-            upks,
+            cell_upks.to_bytes(),
             udt_amount,
             my_udt_amount,
         )
@@ -337,22 +314,14 @@ async fn withdraw<E: PairingEngine>(
         let udt_amount: u128 = write_storage.total_udt_amount - amount;
         let my_udt_amount: u128 = amount;
 
-        let mut omega = vec![];
-        write_storage.omega.write(&mut omega).unwrap();
-
-        let mut upks = vec![];
-        for upk in &write_storage.params.proving_key.update_keys {
-            let mut tmp_bytes = vec![];
-            upk.write(&mut tmp_bytes).unwrap();
-            upks.push(tmp_bytes);
-        }
-
-        let mut vk_bytes = Vec::new();
-        write_storage
-            .params
-            .verification_key
-            .write(&mut vk_bytes)
-            .unwrap();
+        let vk = write_storage.params.verification_key.clone();
+        let upks = write_storage.params.proving_key.update_keys.clone();
+        let omega = write_storage.omega.clone();
+        let cell_upks = CellUpks {
+            vk: vk,
+            omega: omega,
+            upks: upks,
+        };
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, tx_id)) = send_withdraw(
             rollup_hash,
@@ -362,9 +331,7 @@ async fn withdraw<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
-            vk_bytes,
-            omega,
-            upks,
+            cell_upks.to_bytes(),
             udt_amount,
             my_udt_amount,
         )
@@ -482,34 +449,21 @@ async fn setup<E: PairingEngine>(req: Request<Arc<RwLock<Storage<E>>>>) -> Resul
         txs: vec![],
     };
 
-    let mut commit_bytes = vec![];
-    storage.commit.write(&mut commit_bytes).unwrap();
-
-    let mut upks_bytes = vec![];
-    for upk in &storage.params.proving_key.update_keys {
-        let mut tmp_bytes = vec![];
-        upk.write(&mut tmp_bytes).unwrap();
-        upks_bytes.push(tmp_bytes);
-    }
-
-    let mut omega = vec![];
-    storage.omega.write(&mut omega).unwrap();
-
-    let mut vk_bytes = Vec::new();
-    storage
-        .params
-        .verification_key
-        .write(&mut vk_bytes)
-        .unwrap();
+    let vk = storage.params.verification_key.clone();
+    let upks = storage.params.proving_key.update_keys.clone();
+    let omega = storage.omega.clone();
+    let cell_upks = CellUpks {
+        vk: vk,
+        omega: omega,
+        upks: upks,
+    };
 
     // send init state to chain.
     if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) = init_state(
         rollup_lock,
         rollup_dep,
         block.to_bytes(),
-        vk_bytes,
-        omega,
-        upks_bytes,
+        cell_upks.to_bytes(),
     )
     .await
     {
