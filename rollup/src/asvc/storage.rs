@@ -366,11 +366,11 @@ impl<E: PairingEngine> Storage<E> {
 
                     if storage.balances.contains_key(&to) {
                         let balance = storage.balances[&to];
-                        storage.balances.insert(from, balance + amount);
+                        storage.balances.insert(to, balance + amount);
                     } else {
                         storage
                             .balances
-                            .insert(from, self.balances[to as usize] + amount);
+                            .insert(to, self.balances[to as usize] + amount);
                     }
 
                     txlist.push(tx);
