@@ -174,7 +174,7 @@ impl<E: PairingEngine> Storage<E> {
         let nonce_offest_fr =
             <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
 
-        let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, u128)>::new();
+        let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
 
         for tx in &txs {
             match tx.tx_type {
@@ -190,8 +190,8 @@ impl<E: PairingEngine> Storage<E> {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&from];
                         if next_nonce == 0 {
                             // no proof
-                            if amount > tx.balance + balance_change {
-                                continue;
+                            if amount as i128 > tx.balance as i128 + balance_change {
+                                continue
                             }
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
@@ -226,12 +226,12 @@ impl<E: PairingEngine> Storage<E> {
                                     tx.nonce - 1,
                                     tx.balance,
                                     tx.nonce + 1,
-                                    balance_change - amount,
+                                    balance_change - amount as i128,
                                 ),
                             );
                         } else {
                             // proved
-                            if amount > tx.balance + balance_change {
+                            if amount as i128 > tx.balance as i128 + balance_change {
                                 continue;
                             }
                             if tx.nonce != next_nonce {
@@ -239,7 +239,7 @@ impl<E: PairingEngine> Storage<E> {
                             }
                             point_state.insert(
                                 from,
-                                (addr, nonce, balance, tx.nonce + 1, balance_change - amount),
+                                (addr, nonce, balance, tx.nonce + 1, balance_change - amount as i128),
                             );
                         }
                     } else {
@@ -273,7 +273,7 @@ impl<E: PairingEngine> Storage<E> {
                         proofs.push(tx.proof.clone());
                         point_state.insert(
                             from,
-                            (tx.addr, tx.nonce - 1, tx.balance, tx.nonce + 1, 0 - amount),
+                            (tx.addr, tx.nonce - 1, tx.balance, tx.nonce + 1, 0 - amount  as i128),
                         );
                     }
 
@@ -289,12 +289,9 @@ impl<E: PairingEngine> Storage<E> {
 
                     if point_state.contains_key(&to) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
-                        point_state.insert(
-                            to,
-                            (addr, nonce, balance, next_nonce, balance_change + amount),
-                        );
+                        point_state.insert(to,(addr, nonce, balance, next_nonce, balance_change + amount as i128));
                     } else {
-                        point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount));
+                        point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
 
                     new_commit = update_commit::<E>(
@@ -436,15 +433,14 @@ impl<E: PairingEngine> Storage<E> {
         let mut cvalues = HashMap::<u32, E::Fr>::new();
 
         for (u, balance) in self.balances.iter().enumerate() {
-            let mut bytes = Vec::new();
             let addr = self.full_pubkeys[u].addr();
             let nonce = self.nonces[u];
 
-            addr.write(&mut bytes).unwrap();
-            nonce.write(&mut bytes).unwrap();
-            balance.to_le_bytes().write(&mut bytes).unwrap();
+            let mut origin_proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
+            origin_proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64 - 1)).mul(&E::Fr::from(2).pow(&[128])));
+            origin_proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
 
-            olds.insert(u as u32, mimc::hash(&bytes));
+            olds.insert(u as u32, origin_proof_params);
         }
 
         // change register full_pubkey
