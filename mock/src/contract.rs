@@ -11,7 +11,7 @@ use ckb_testtool::{builtin::ALWAYS_SUCCESS, context::Context};
 use ckb_tool::ckb_types::{bytes::Bytes, core::Capacity, packed::*, prelude::*};
 
 // 1 is error
-const MAX_CYCLES: u64 = 2_000_000_000;
+const MAX_CYCLES: u64 = 5_000_000_000;
 
 fn jsonrpc(params: Value) -> Value {
     json!(
