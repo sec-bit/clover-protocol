@@ -550,6 +550,9 @@ impl<E: PairingEngine> Storage<E> {
                 TxType::Register(account) => {
                     let upk = self.params.proving_key.update_keys[account as usize].clone();
 
+                    if self.next_user <= account{
+                        self.next_user = account + 1
+                    }
                     self.full_pubkeys[account as usize] = FullPubKey {
                         i: account,
                         update_key: upk,
