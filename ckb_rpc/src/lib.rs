@@ -247,7 +247,6 @@ pub async fn init_state(
 
     let mut true_commit = vec![0u8];
     true_commit.extend_from_slice(&mut commit[..]);
-    true_commit.extend_from_slice(&mut 0u32.to_le_bytes()[..]);
 
     let mut all_upks = vec![];
     all_upks.extend_from_slice(&mut vk[..]);

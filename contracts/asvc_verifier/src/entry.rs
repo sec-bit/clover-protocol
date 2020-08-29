@@ -8,11 +8,10 @@ use ckb_std::{
     high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash},
 };
 
-use ckb_zkp::curve::bn_256::{Bn_256, Fr};
+use ckb_zkp::curve::bn_256::Bn_256;
 use ckb_zkp::math::FromBytes;
-use ckb_zkp::scheme::asvc::{UpdateKey, VerificationKey};
 
-use asvc_rollup::block::Block;
+use asvc_rollup::block::{Block, CellUpks};
 
 use crate::error::Error;
 
@@ -280,32 +279,30 @@ fn verify(
     change: u128,
     is_add: bool,
 ) -> Result<(), Error> {
-    debug!("pre: {:?}", pre);
-    debug!("now: {:?}", now);
-    debug!("upk: {:?}", upk);
     debug!("change: {}{}", if is_add { "+" } else { "-" }, change);
 
     pre.remove(0);
     now.remove(0);
 
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
+    debug!("pre_block is ok");
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
+    debug!("now_block is ok");
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
     }
+    debug!("pre_block new_commit == now_block commit");
 
-    let vk = VerificationKey::<Bn_256>::read(&upk[..]).unwrap();
-    let omega = Fr::read(&upk[..]).unwrap();
+    let cell_upks = CellUpks::<Bn_256>::from_bytes(&upk[..]).unwrap();
 
-    let mut upk_len = [0u8; 4];
-    upk_len.copy_from_slice(&upk[0..4]);
-    let mut upks = Vec::new();
-    for _ in 0..u32::from_le_bytes(upk_len) {
-        upks.push(UpdateKey::<Bn_256>::read(&upk[4..]).unwrap());
-    }
+    debug!("cell upks is ok");
 
-    now_block.verify(&vk, omega, &upks).unwrap();
+    now_block
+        .verify(&cell_upks.vk, cell_upks.omega, &cell_upks.upks)
+        .unwrap();
+
+    debug!("verify is ok");
 
     Ok(())
 }

@@ -7,6 +7,27 @@ use core::ops::{Add, Mul, Sub};
 use crate::transaction::{u128_to_fr, u32_to_fr, Transaction, TxType, ACCOUNT_SIZE};
 use crate::{vec, String, Vec};
 
+pub struct CellUpks<E: PairingEngine> {
+    pub vk: VerificationKey<E>,
+    pub omega: E::Fr,
+    pub upks: Vec<UpdateKey<E>>,
+}
+
+impl<E: PairingEngine> CellUpks<E> {
+    pub fn from_bytes(mut s: &[u8]) -> Result<Self, ()> {
+        let vk = VerificationKey::read(&mut s).map_err(|_| ())?;
+        let omega = E::Fr::read(&mut s).map_err(|_| ())?;
+
+        let n = u32::read(&mut s).map_err(|_| ())?;
+        let mut upks = Vec::new();
+        for _ in 0..n {
+            upks.push(UpdateKey::read(&mut s).map_err(|_| ())?);
+        }
+
+        Ok(Self { vk, omega, upks })
+    }
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct Block<E: PairingEngine> {
     pub block_height: u32,
