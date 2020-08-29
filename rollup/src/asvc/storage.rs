@@ -1,5 +1,4 @@
 use ckb_zkp::curve::Field;
-use ckb_zkp::gadgets::mimc;
 use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes, Zero};
 use ckb_zkp::scheme::asvc::{
     aggregate_proofs, update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey,
@@ -191,7 +190,7 @@ impl<E: PairingEngine> Storage<E> {
                         if next_nonce == 0 {
                             // no proof
                             if amount as i128 > tx.balance as i128 + balance_change {
-                                continue
+                                continue;
                             }
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
@@ -239,7 +238,13 @@ impl<E: PairingEngine> Storage<E> {
                             }
                             point_state.insert(
                                 from,
-                                (addr, nonce, balance, tx.nonce + 1, balance_change - amount as i128),
+                                (
+                                    addr,
+                                    nonce,
+                                    balance,
+                                    tx.nonce + 1,
+                                    balance_change - amount as i128,
+                                ),
                             );
                         }
                     } else {
@@ -273,7 +278,13 @@ impl<E: PairingEngine> Storage<E> {
                         proofs.push(tx.proof.clone());
                         point_state.insert(
                             from,
-                            (tx.addr, tx.nonce - 1, tx.balance, tx.nonce + 1, 0 - amount  as i128),
+                            (
+                                tx.addr,
+                                tx.nonce - 1,
+                                tx.balance,
+                                tx.nonce + 1,
+                                0 - amount as i128,
+                            ),
                         );
                     }
 
@@ -289,7 +300,16 @@ impl<E: PairingEngine> Storage<E> {
 
                     if point_state.contains_key(&to) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
-                        point_state.insert(to,(addr, nonce, balance, next_nonce, balance_change + amount as i128));
+                        point_state.insert(
+                            to,
+                            (
+                                addr,
+                                nonce,
+                                balance,
+                                next_nonce,
+                                balance_change + amount as i128,
+                            ),
+                        );
                     } else {
                         point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
@@ -437,8 +457,11 @@ impl<E: PairingEngine> Storage<E> {
             let nonce = self.nonces[u];
 
             let mut origin_proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
-            origin_proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64 - 1)).mul(&E::Fr::from(2).pow(&[128])));
-            origin_proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
+            origin_proof_params +=
+                &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64 - 1))
+                    .mul(&E::Fr::from(2).pow(&[128])));
+            origin_proof_params +=
+                &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
 
             olds.insert(u as u32, origin_proof_params);
         }
@@ -469,9 +492,9 @@ impl<E: PairingEngine> Storage<E> {
             balance.to_le_bytes().write(&mut bytes).unwrap();
 
             let mut proof_params = addr.mul(&E::Fr::from(2).pow(&[160]));
-            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64)).mul(&E::Fr::from(2).pow(&[128])));
+            proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(nonce as u64))
+                .mul(&E::Fr::from(2).pow(&[128])));
             proof_params += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(*balance)));
-
 
             let res = olds
                 .get_mut(&(u as u32))

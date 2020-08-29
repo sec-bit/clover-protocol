@@ -113,18 +113,36 @@ async fn rpc(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Erro
             let tx_bytes = hex::decode(&params[0]).unwrap();
             let tx = TransactionView::new_unchecked(tx_bytes.into());
 
+            println!(
+                "receive send_transaction: {}",
+                hex::encode(tx.hash().as_slice())
+            );
+
             let mut blockchain = req.state().write().await;
 
+            let new_tx = blockchain.context.complete_tx(tx.unpack());
+
+            println!("start verify tx...");
             let cycles = blockchain
                 .context
-                .verify_tx(&tx.unpack(), MAX_CYCLES)
+                .verify_tx(&new_tx, MAX_CYCLES)
                 .expect("pass verification");
             println!("Tx cycles: {}...", cycles);
+
+            // MOCK: context create_ouput_cell for next call.
+            let mut results = vec![];
+
+            for i in 0..new_tx.outputs().len() {
+                let output = new_tx.outputs().get(i).unwrap();
+                let data = new_tx.outputs_data().get(i).unwrap();
+                let out_point = blockchain.context.create_cell(output, data.unpack());
+                results.push(hex::encode(out_point.as_slice()));
+            }
 
             let tx_hash = tx.hash();
             blockchain.pool.insert(tx_hash.clone(), tx);
 
-            json!(hex::encode(tx_hash.as_slice()))
+            json!(results)
         }
         _ => json!("Not supported"),
     };
@@ -149,8 +167,6 @@ impl Blockchain {
     fn miner_block(&mut self) {
         let mut block = vec![];
         for (tx_hash, tx) in self.pool.drain() {
-            self.context.complete_tx(tx.unpack());
-
             block.push(tx_hash.clone());
             self.stable_txs.insert(tx_hash, tx);
         }
@@ -190,7 +206,7 @@ impl Default for Blockchain {
 }
 
 fn main() {
-    tide::log::start();
+    //tide::log::start();
 
     let blockchain = Arc::new(RwLock::new(Blockchain::default()));
 

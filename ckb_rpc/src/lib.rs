@@ -273,11 +273,13 @@ pub async fn init_state(
 
     let tx_hash = tx.hash();
 
+    let mut results = send_tx(tx.pack()).await?;
+
     Ok((
-        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
-        send_tx(tx.pack()).await?,
+        results.remove(0),
+        results.remove(0),
+        results.remove(0),
+        hex::encode(tx_hash.as_slice()),
     ))
 }
 
@@ -362,12 +364,14 @@ pub async fn send_deposit(
 
     let tx_hash = tx.hash();
 
+    let mut results = send_tx(tx.pack()).await?;
+
     Ok((
-        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 3u32).as_slice()),
-        send_tx(tx.pack()).await?,
+        results.remove(0),
+        results.remove(0),
+        results.remove(0),
+        results.remove(0),
+        hex::encode(tx_hash.as_slice()),
     ))
 }
 
@@ -447,11 +451,13 @@ pub async fn send_withdraw(
 
     let tx_hash = tx.hash();
 
+    let mut results = send_tx(tx.pack()).await?;
+
     Ok((
-        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 2u32).as_slice()),
-        send_tx(tx.pack()).await?,
+        results.remove(0),
+        results.remove(0),
+        results.remove(0),
+        hex::encode(tx_hash.as_slice()),
     ))
 }
 
@@ -506,15 +512,18 @@ pub async fn send_block(
         .build();
 
     let tx_hash = tx.hash();
+    println!("Send transaction: {}", hex::encode(tx_hash.as_slice()));
+
+    let mut results = send_tx(tx.pack()).await?;
 
     Ok((
-        hex::encode(OutPoint::new(tx_hash.clone(), 0u32).as_slice()),
-        hex::encode(OutPoint::new(tx_hash.clone(), 1u32).as_slice()),
-        send_tx(tx.pack()).await?,
+        results.remove(0),
+        results.remove(0),
+        hex::encode(tx_hash.as_slice()),
     ))
 }
 
-async fn send_tx(tx: TransactionView) -> Result<String, ()> {
+async fn send_tx(tx: TransactionView) -> Result<Vec<String>, ()> {
     let s = hex::encode(tx.as_slice());
 
     // Build a CKB Transaction
@@ -534,7 +543,12 @@ async fn send_tx(tx: TransactionView) -> Result<String, ()> {
         .await
     {
         Ok(mut res) => match res.body_json::<Value>().await {
-            Ok(value) => Ok(value["result"].as_str().unwrap().to_owned()),
+            Ok(value) => Ok(value["result"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect()),
             Err(err) => {
                 println!("{:?}", err);
                 Err(())

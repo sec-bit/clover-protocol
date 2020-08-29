@@ -3,6 +3,7 @@ use async_std::{
     task,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
@@ -181,23 +182,15 @@ async fn register<E: PairingEngine>(
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct DepositRequest {
-    pub to: String,
-    pub amount: String,
-    pub psk: String,
-}
-
 /// wallet deposit api. build tx and send to ckb.
 async fn deposit<E: PairingEngine>(
     mut req: Request<Arc<RwLock<Storage<E>>>>,
 ) -> Result<String, Error> {
-    let params: DepositRequest = req.body_json().await?;
-    let (from, amount, sk) = (
-        params.to.parse().unwrap(),
-        params.amount.parse().unwrap(),
-        SecretKey::from_hex(&params.psk).unwrap(),
-    );
+    let params: Value = req.body_json().await?;
+
+    let from: u32 = params["to"].as_str().unwrap().parse().unwrap();
+    let amount: u128 = params["amount"].as_str().unwrap().parse().unwrap();
+    let sk = SecretKey::from_hex(params["psk"].as_str().unwrap()).unwrap();
 
     let read_storage = req.state().read().await;
 
