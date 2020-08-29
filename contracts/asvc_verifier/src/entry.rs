@@ -320,7 +320,6 @@ fn verify(
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
     debug!("pre_block is ok");
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
-    debug!("now_block is ok commit: {:?}", now);
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
@@ -355,8 +354,4 @@ fn verify(
             return Err(Error::Verify);
         }
     };
-
-    debug!("verify is ok");
-
-    Ok(())
 }
