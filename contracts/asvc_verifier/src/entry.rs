@@ -5,7 +5,7 @@ use ckb_std::{
     ckb_constants::Source,
     debug,
     error::SysError,
-    high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash},
+    high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash, load_script_hash},
 };
 
 use ckb_zkp::curve::bn_256::{Bn_256, Fr};
@@ -324,8 +324,8 @@ fn verify(
     pre.remove(0);
     now.remove(0);
 
-    let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
-    let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
+    let pre_block = Block::<Bn_256>::from_bytes(&mut pre[..]).unwrap();
+    let now_block = Block::<Bn_256>::from_bytes(&mut now[..]).unwrap();
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
@@ -341,7 +341,7 @@ fn verify(
         upks.push(UpdateKey::<Bn_256>::read(&upk[4..]).unwrap());
     }
 
-    let udt_change = change as i128;
+    let mut udt_change = change as i128;
     if !is_add {
         udt_change = -udt_change;
     }
