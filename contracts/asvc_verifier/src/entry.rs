@@ -18,42 +18,49 @@ use crate::error::Error;
 
 // use simple UDT length
 const UDT_LEN: usize = 16; // u128
+const BLOCK_CELL: usize = 0;
+const UPK_CELL: usize = 1;
 
 pub fn main() -> Result<(), Error> {
     // load now commit
-    let now_commit = match load_cell_data(0, Source::Output) {
+    let now_commit = match load_cell_data(BLOCK_CELL, Source::Output) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
 
-    let now_com_lock = load_cell_lock_hash(0, Source::Output)?;
+    let now_com_lock = load_cell_lock_hash(BLOCK_CELL, Source::Output)?;
 
     if now_commit.len() == 0 {
         return Err(Error::LengthNotEnough);
     }
 
-    let now_upk = match load_cell_data(1, Source::Output) {
+    let now_upk = match load_cell_data(UPK_CELL, Source::Output) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
-    let now_upk_lock = load_cell_lock_hash(1, Source::Output)?;
+    let now_upk_lock = load_cell_lock_hash(UPK_CELL, Source::Output)?;
 
-    let pre_commit = match load_cell_data(0, Source::Input) {
+    let pre_commit = match load_cell_data(BLOCK_CELL, Source::Input) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
-    let pre_com_lock = load_cell_lock_hash(0, Source::Input)?;
+    let pre_com_lock = load_cell_lock_hash(BLOCK_CELL, Source::Input)?;
 
-    let pre_upk = match load_cell_data(1, Source::Input) {
+    let pre_upk = match load_cell_data(UPK_CELL, Source::Input) {
         Ok(data) => data,
         Err(err) => return Err(err.into()),
     };
-    let pre_upk_lock = load_cell_lock_hash(1, Source::Input)?;
+    let pre_upk_lock = load_cell_lock_hash(UPK_CELL, Source::Input)?;
 
     if now_upk != pre_upk {
         return Err(Error::Upk);
     }
 
+    let self_script_hash = load_script_hash().unwrap();
+
+    if self_script_hash != now_com_lock {
+        return Err(Error::Verify);
+    }
     if (now_com_lock != now_upk_lock)
         || (now_com_lock != pre_com_lock)
         || (now_com_lock != pre_upk_lock)
@@ -67,16 +74,17 @@ pub fn main() -> Result<(), Error> {
         1u8 => {
             // DEPOSIT
             //
-            // input1 => pre_commit
-            // input2 => upk
-            // input3 => pre_udt_pool
-            // input4..n => udt_unspend
-            // output1 => now_commit
-            // output2 => upk
-            // output3 => now_udt_pool
-            // output4..n => udt_change
+            // input0 => pre_commit
+            // input1 => upk
+            // input2 => pre_udt_pool
+            // input3..n-1 => udt_unspend
+            // output0 => now_commit
+            // output1 => upk
+            // output2 => now_udt_pool
+            // output3..n-1 => udt_change
 
             // 2. pre udt amount in pool.
+            debug!("DEPOSIT");
             let pre_amount = match load_cell_data(2, Source::Input) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
@@ -180,14 +188,17 @@ pub fn main() -> Result<(), Error> {
         2u8 => {
             // WITHDRAW
             //
-            // input1 => pre_commit
-            // input2 => pre_upk
-            // input3 => pre_udt_pool
-            // output1 => now_commit
+            // input0 => pre_commit
+            // input1 => upk
+            // input2 => pre_udt_pool
+            // output0 => now_commit
+            // output1 => upk
             // output2 => now_udt_pool
-            // output3..n => udt_unspend
+            // output3..n-1 => udt_unspend
 
             // 2. pre udt amount in pool.
+            debug!("WITHDRAW");
+
             let pre_amount = match load_cell_data(2, Source::Input) {
                 Ok(data) => {
                     let mut buf = [0u8; UDT_LEN];
@@ -263,9 +274,34 @@ pub fn main() -> Result<(), Error> {
         3u8 => {
             // POST BLOCK
             //
-            // input1 => pre_commit
-            // output1 => now_commit
+            // input0 => pre_commit
+            // input1 => upk
+            // output0 => now_commit
+            // output1 => upk
 
+            debug!("POST BLOCK");
+            // presence of any other cells with the same lock script
+            // (to be precise, udt pool cells) is illegal.
+            for i in 2.. {
+                match load_cell_lock_hash(i, Source::Input) {
+                    Ok(lock) => {
+                        if lock == self_script_hash {
+                            return Err(Error::Amount);
+                        }
+                    }
+                    Err(SysError::IndexOutOfBound) => break,
+                    Err(err) => return Err(err.into()),
+                }
+                match load_cell_lock_hash(i, Source::Output) {
+                    Ok(lock) => {
+                        if lock == self_script_hash {
+                            return Err(Error::Amount);
+                        }
+                    }
+                    Err(SysError::IndexOutOfBound) => break,
+                    Err(err) => return Err(err.into()),
+                }
+            }
             // post block proof
             verify(pre_commit, now_commit, now_upk, 0, false)
         }
@@ -305,7 +341,23 @@ fn verify(
         upks.push(UpdateKey::<Bn_256>::read(&upk[4..]).unwrap());
     }
 
-    now_block.verify(&vk, omega, &upks).unwrap();
-
-    Ok(())
+    let udt_change = change as i128;
+    if !is_add {
+        udt_change = -udt_change;
+    }
+    match now_block.verify(&vk, omega, &upks) {
+        Ok(r) => {
+            if r == udt_change {
+                return Ok(());
+            }
+            debug!(
+                "udt amount change mismatched :on chain {}, off chain: {}",
+                udt_change, r
+            );
+            return Err(Error::Amount);
+        }
+        _ => {
+            return Err(Error::Verify);
+        }
+    }
 }
