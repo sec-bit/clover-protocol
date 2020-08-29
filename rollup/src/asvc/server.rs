@@ -180,6 +180,7 @@ async fn deposit<E: PairingEngine>(
     let from: u32 = params["to"].as_str().unwrap().parse().unwrap();
     let amount: u128 = params["amount"].as_str().unwrap().parse().unwrap();
     let sk = SecretKey::from_hex(params["psk"].as_str().unwrap()).unwrap();
+    println!("[deposit] from={}, amount={}", from, amount);
 
     let read_storage = req.state().read().await;
 
@@ -197,6 +198,7 @@ async fn deposit<E: PairingEngine>(
     let balance = read_storage.user_balance(from);
     let proof = read_storage.user_proof(from);
 
+    println!("[deposit] nonce={}, balance={}", nonce, balance);
     let tx = Transaction::<E>::new_deposit(from, amount, fpk, nonce, balance, proof, &sk);
 
     drop(read_storage);
@@ -393,9 +395,11 @@ async fn transfer<E: PairingEngine>(
     let proof = read_storage.user_proof(from);
 
     println!(
-        "transfer balance: from: {}, to: {}, amount {}",
+        "transfer balance: balance:{}, from: {}, to: {}, amount {}",
         balance,
-        read_storage.user_balance(to),
+        from,
+        to,
+        // read_storage.user_balance(to),
         amount,
     );
 

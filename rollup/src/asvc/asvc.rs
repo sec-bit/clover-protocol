@@ -71,7 +71,7 @@ where
     for (&j, &value) in cvalues {
         for i in 0..n {
             let proof = update_proof::<E>(
-                &proofs[j as usize],
+                &proofs[i as usize],
                 value,
                 i as u32,
                 j,
