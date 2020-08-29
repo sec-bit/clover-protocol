@@ -65,9 +65,9 @@ impl<E: PairingEngine> Block<E> {
         vk: &VerificationKey<E>,
         omega: E::Fr,
         upks: &Vec<UpdateKey<E>>,
-    ) -> Result<i128, ()> {
+    ) -> Result<i128, String> {
         if upks.len() != ACCOUNT_SIZE {
-            return Err(());
+            return Err(String::from("BLOCK_VERIFY: Upk length"));
         }
 
         let mut points2prove: Vec<u32> = Vec::new();
@@ -152,7 +152,7 @@ impl<E: PairingEngine> Block<E> {
                     // balance sufficiency check
                     if table[from as usize].1 < 0 {
                         if table[from as usize].4 < (-table[from as usize].1 as u128) {
-                            return Err(());
+                            return Err(String::from("BLOCK_VERIFY: balance check failure"));
                         }
                     }
                 }
@@ -198,7 +198,7 @@ impl<E: PairingEngine> Block<E> {
                             }
                             Some(_) => {
                                 if tx.nonce - table[from as usize].3 != 1 {
-                                    return Err(());
+                                    return Err(String::from("BLOCK_VERIFY: nonce invalid"));
                                 }
                                 table[from as usize].0 = Some(
                                     table[from as usize]
@@ -215,7 +215,7 @@ impl<E: PairingEngine> Block<E> {
                     // balance sufficiency check
                     if table[from as usize].1 < 0 {
                         if table[from as usize].4 < (-table[from as usize].1 as u128) {
-                            return Err(());
+                            return Err(String::from("BLOCK_VERIFY: balance invalid"));
                         }
                     }
                     match table[to as usize].0 {
@@ -240,7 +240,7 @@ impl<E: PairingEngine> Block<E> {
                         Some(
                             E::Fr::zero()
                                 .add(&u128_to_fr::<E>(tx.balance))
-                                .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1))),
+                                .add(&MUL128.mul(&u32_to_fr::<E>(0))), // tx.nonce - 1
                         ),
                         tx.nonce,
                         tx.balance,
@@ -248,6 +248,7 @@ impl<E: PairingEngine> Block<E> {
                 }
             }
         }
+
         // previous version
         {
             // for tx in &self.txs {
@@ -416,7 +417,7 @@ impl<E: PairingEngine> Block<E> {
                 omega,
                 ACCOUNT_SIZE,
             )
-            .map_err(|_| ())?;
+            .map_err(|_| String::from("BLOCK_VERIFY: update commit failure!"))?;
         }
         verify_pos::<E>(
             vk,
@@ -426,7 +427,7 @@ impl<E: PairingEngine> Block<E> {
             &self.proof,
             omega,
         )
-        .map_err(|_| ())?;
+        .map_err(|_| String::from("BLOCK_VERIFY: verify pos failure!"))?;
 
         Ok(overall_change)
     }

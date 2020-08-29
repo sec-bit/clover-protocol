@@ -1,5 +1,5 @@
 use async_std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
     task,
 };
 use serde_json::{json, Value};
@@ -23,12 +23,12 @@ fn jsonrpc(params: Value) -> Value {
 }
 
 /// Miner task.
-async fn miner(blockchain: Arc<Mutex<Blockchain>>) -> Result<(), std::io::Error> {
+async fn miner(blockchain: Arc<RwLock<Blockchain>>) -> Result<(), std::io::Error> {
     loop {
         // 10s to miner a block. (mock consensus)
         task::sleep(Duration::from_secs(10)).await;
 
-        blockchain.lock().await.miner_block();
+        blockchain.write().await.miner_block();
     }
 }
 
@@ -37,14 +37,14 @@ struct DeployReq {
     pub contract: String,
 }
 
-async fn deploy(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Error> {
+async fn deploy(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Error> {
     println!("start deploy contract.........");
     let rpc: DeployReq = req.body_json().await?;
     let rollup_bin: Bytes = std::fs::read(format!("./build/debug/{}", rpc.contract))
         .expect("binary")
         .into();
 
-    let mut blockchain = req.state().lock().await;
+    let mut blockchain = req.state().write().await;
 
     let success_point = blockchain.context.deploy_cell(ALWAYS_SUCCESS.clone());
     let success_lock_script = blockchain
@@ -89,16 +89,16 @@ struct RpcReq {
     pub params: Vec<String>,
 }
 
-async fn rpc(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Error> {
+async fn rpc(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Error> {
     let rpc: RpcReq = req.body_json().await?;
     let (method, params) = (rpc.method.as_str(), rpc.params);
 
     let results = match method {
-        "get_tip_block_number" => json!(req.state().lock().await.get_block_height()),
+        "get_tip_block_number" => json!(req.state().read().await.get_block_height()),
         "get_block" => {
             let txs: Vec<String> = req
                 .state()
-                .lock()
+                .read()
                 .await
                 .get_block(params[0].parse().unwrap())
                 .iter()
@@ -111,7 +111,7 @@ async fn rpc(mut req: Request<Arc<Mutex<Blockchain>>>) -> Result<Response, Error
             let tx_bytes = hex::decode(&params[0]).unwrap();
             let tx = TransactionView::new_unchecked(tx_bytes.into());
 
-            let mut blockchain = req.state().lock().await;
+            let mut blockchain = req.state().write().await;
 
             let cycles = blockchain
                 .context
@@ -190,7 +190,7 @@ impl Default for Blockchain {
 fn main() {
     tide::log::start();
 
-    let blockchain = Arc::new(Mutex::new(Blockchain::default()));
+    let blockchain = Arc::new(RwLock::new(Blockchain::default()));
 
     task::spawn(miner(blockchain.clone()));
 
