@@ -179,7 +179,13 @@ pub fn main() -> Result<(), Error> {
             }
 
             // 7. verify commit info.
-            verify(pre_commit, now_commit, now_upk, deposit_amount, true)
+            verify(
+                pre_commit,
+                now_commit,
+                now_upk,
+                deposit_amount - change_amount,
+                true,
+            )
         }
         2u8 => {
             // WITHDRAW
@@ -313,6 +319,8 @@ fn verify(
     is_add: bool,
 ) -> Result<(), Error> {
     debug!("change: {}{}", if is_add { "+" } else { "-" }, change);
+
+    //return Ok(());
 
     pre.remove(0);
     now.remove(0);
