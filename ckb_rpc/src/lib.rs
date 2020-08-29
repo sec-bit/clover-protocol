@@ -142,10 +142,7 @@ pub async fn listen_blocks(
             println!("ERROR------------");
             break;
         }
-
-        if tmp_block.len() != 0 {
-            blocks.push((tmp_block, i));
-        }
+        blocks.push((tmp_block, i));
     }
 
     Ok(blocks)

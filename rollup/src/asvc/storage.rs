@@ -101,7 +101,7 @@ impl<E: PairingEngine> Storage<E> {
     }
 
     pub fn new_next_nonce(&self, u: u32) -> u32 {
-        self.tmp_nonces[u as usize]
+        self.tmp_nonces[u as usize] + 1
     }
 
     pub fn new_next_user(&self) -> (u32, UpdateKey<E>) {
@@ -239,6 +239,7 @@ impl<E: PairingEngine> Storage<E> {
                             } else {
                                 continue;
                             }
+
                             froms.push(tx.from());
                             proofs.push(tx.proof.clone());
                             point_state.insert(
@@ -297,6 +298,7 @@ impl<E: PairingEngine> Storage<E> {
                         } else {
                             continue;
                         }
+
                         froms.push(tx.from());
                         proofs.push(tx.proof.clone());
                         point_state.insert(
@@ -361,6 +363,7 @@ impl<E: PairingEngine> Storage<E> {
                             .balances
                             .insert(from, self.balances[from as usize] - amount);
                     }
+
                     if storage.balances.contains_key(&to) {
                         let balance = storage.balances[&to];
                         storage.balances.insert(from, balance + amount);
@@ -561,7 +564,7 @@ impl<E: PairingEngine> Storage<E> {
                 TxType::Register(account) => {
                     let upk = self.params.proving_key.update_keys[account as usize].clone();
 
-                    if self.next_user <= account{
+                    if self.next_user <= account {
                         self.next_user = account + 1
                     }
                     self.full_pubkeys[account as usize] = FullPubKey {
