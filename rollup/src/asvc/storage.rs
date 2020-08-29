@@ -104,6 +104,12 @@ impl<E: PairingEngine> Storage<E> {
         self.tmp_nonces[u as usize] + 1
     }
 
+    pub fn new_and_inc_next_nonce(&mut self, u: u32) -> u32 {
+        let nonce = self.tmp_nonces[u as usize];
+        self.tmp_nonces[u as usize] =nonce + 1;
+        nonce + 1
+    }
+
     pub fn new_next_user(&self) -> (u32, UpdateKey<E>) {
         let account = self.tmp_next_user;
         (
@@ -179,14 +185,14 @@ impl<E: PairingEngine> Storage<E> {
         let mut froms = vec![];
 
         //let nonce_offest_fr = E::Fr::one() >> 128;
-        let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
-        for _ in 0..128 {
-            // balance is u128
-            repr.div2();
-        }
+        // let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
+        // for _ in 0..128 {
+        //     // balance is u128
+        //     repr.div2();
+        // }
 
-        let nonce_offest_fr =
-            <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
+        let nonce_offest_fr = E::Fr::from(2).pow(&[128]);
+            // <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
 
         let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
 
@@ -324,7 +330,7 @@ impl<E: PairingEngine> Storage<E> {
                             ),
                         );
                     }
-                    println!("[build_block] start update commit...");
+                    println!("[build_block] start update commit...old commit={}, amount_fr={}, from={}",new_commit.clone().commit, amount_fr, from);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         amount_fr.neg().add(&nonce_offest_fr),
@@ -353,6 +359,7 @@ impl<E: PairingEngine> Storage<E> {
                         point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
 
+                    println!("[build_block] start update commit...old commit={}, amount_fr={}, to={}",new_commit.clone().commit, amount_fr, to);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         amount_fr,
@@ -386,7 +393,7 @@ impl<E: PairingEngine> Storage<E> {
                             .balances
                             .insert(to, self.balances[to as usize] + amount);
                     }
-
+                    self.tmp_nonces[from as usize] +=1;
                     txlist.push(tx);
                 }
                 TxType::Register(account) => {
@@ -406,6 +413,7 @@ impl<E: PairingEngine> Storage<E> {
 
                     point_state.insert(account, (tx.addr, 0, 0, 1, 0));
 
+                    println!("[build_block] start update commit...old commit={}, account={}",new_commit.clone().commit, account);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         origin_proof_params,
@@ -429,6 +437,7 @@ impl<E: PairingEngine> Storage<E> {
                 TxType::Withdraw(from, amount) => {
                     return None;
                 }
+                
             }
         }
 
@@ -551,7 +560,7 @@ impl<E: PairingEngine> Storage<E> {
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;
-        println!("block_height = {}, old commit = {}, new commit = {}", block.block_height,  self.commit.commit, block.new_commit.commit);
+        println!("[handle_block]block_height = {}, old commit = {}, new commit = {}", block.block_height,  self.commit.commit, block.new_commit.commit);
         self.commit = block.new_commit;
 
         let mut storage = self.tmp_storages[&block.block_height].clone();
@@ -617,12 +626,13 @@ impl<E: PairingEngine> Storage<E> {
 
         update_proofs::<E>(
             &self.params.proving_key.update_keys,
-            &block.commit,
+            &self.commit,
             &mut self.proofs,
             &cvalues,
             n as usize,
         )
         .unwrap();
+        println!("[handle_block]update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
 
         self.block_height = block.block_height;
         let mut removes = Vec::new();
@@ -696,6 +706,7 @@ impl<E: PairingEngine> Storage<E> {
             n as usize,
         )
         .unwrap();
+        println!("update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
     }
 
     /// if send to L1 failure, revert the block's txs.

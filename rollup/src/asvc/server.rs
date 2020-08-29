@@ -391,6 +391,7 @@ async fn transfer<E: PairingEngine>(
 
     let from_fpk = read_storage.user_fpk(from);
     let nonce = read_storage.new_next_nonce(from);
+    
     let balance = read_storage.user_balance(from);
     let proof = read_storage.user_proof(from);
 
