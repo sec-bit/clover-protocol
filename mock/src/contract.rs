@@ -43,7 +43,7 @@ struct DeployReq {
 async fn deploy(mut req: Request<Arc<RwLock<Blockchain>>>) -> Result<Response, Error> {
     println!("start deploy contract.........");
     let rpc: DeployReq = req.body_json().await?;
-    let rollup_bin: Bytes = std::fs::read(format!("./build/debug/{}", rpc.contract))
+    let rollup_bin: Bytes = std::fs::read(format!("./build/release/{}", rpc.contract))
         .expect("binary")
         .into();
 
