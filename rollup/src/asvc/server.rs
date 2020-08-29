@@ -458,7 +458,8 @@ async fn transfer<E: PairingEngine>(
 /// wallet transfer api. build tx and send to ckb.
 async fn setup<E: PairingEngine>(req: Request<Arc<RwLock<Storage<E>>>>) -> Result<String, Error> {
     //let from_fpk = req.state().read().await.user_fpk(from);
-    let (rollup_lock, rollup_dep, udt_lock, my_udt) = deploy_contract("asvc_rollup").await.unwrap();
+    let (rollup_lock, rollup_dep, udt_lock, my_udt) =
+        deploy_contract("asvc_verifier").await.unwrap();
 
     println!("ASVC rollup lock: {}", rollup_lock);
     println!("ASVC rollup lock dep: {}", rollup_dep);

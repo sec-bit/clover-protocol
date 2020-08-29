@@ -30,12 +30,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efba9eaa9fdf9fddf408904e3dc3dc414411053ef48c06edd3aac53d2d919e0e"
 
 [[package]]
-name = "byteorder"
-version = "1.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c48aae112d48ed9f069b33538ea9e3e90aa263cfa3d1c24309612b1f7472de"
-
-[[package]]
 name = "cc"
 version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -80,9 +74,8 @@ dependencies = [
 [[package]]
 name = "ckb-zkp"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#14bbd5fdbcfe99f875ca1260e8cef0ec49f4524b"
 dependencies = [
- "byteorder",
  "curve",
  "math",
  "rand",
@@ -92,7 +85,7 @@ dependencies = [
 [[package]]
 name = "curve"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#14bbd5fdbcfe99f875ca1260e8cef0ec49f4524b"
 dependencies = [
  "math",
 ]
@@ -109,32 +102,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "getrandom"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7abc8dd8451921606d809ba32e95b6111925cd2906060d2dcc29c070220503eb"
-dependencies = [
- "cfg-if",
- "libc",
- "wasi",
-]
-
-[[package]]
 name = "hex"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
 
 [[package]]
-name = "libc"
-version = "0.2.76"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755456fae044e6fa1ebbbd1b3e902ae19e73097ed4ed87bb79934a867c007bc3"
-
-[[package]]
 name = "math"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#14bbd5fdbcfe99f875ca1260e8cef0ec49f4524b"
 dependencies = [
  "derivative",
  "math-derive",
@@ -146,7 +122,7 @@ dependencies = [
 [[package]]
 name = "math-derive"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#14bbd5fdbcfe99f875ca1260e8cef0ec49f4524b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -155,9 +131,9 @@ dependencies = [
 
 [[package]]
 name = "molecule"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663f76cc52219e5957e2f5563cce9d89f98aa8503c9c898b5c412d97df663998"
+checksum = "3067ceba3d7f5dcc7427cfc584fc506e756f1161151032fec840455f5a3c2fd5"
 dependencies = [
  "cfg-if",
 ]
@@ -201,8 +177,6 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a6b1679d49b24bbfe0c803429aa1874472f50d9b363131f0e89fc356b544d03"
 dependencies = [
- "getrandom",
- "libc",
  "rand_chacha",
  "rand_core",
  "rand_hc",
@@ -223,9 +197,6 @@ name = "rand_core"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "rand_hc"
@@ -239,7 +210,7 @@ dependencies = [
 [[package]]
 name = "scheme"
 version = "0.1.0"
-source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#c26d13d75fa1d1c061c6cf947a7a39c95cd5bb9c"
+source = "git+https://github.com/sec-bit/ckb-zkp?branch=develop-asvc#14bbd5fdbcfe99f875ca1260e8cef0ec49f4524b"
 dependencies = [
  "curve",
  "math",
@@ -279,9 +250,3 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "wasi"
-version = "0.9.0+wasi-snapshot-preview1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"

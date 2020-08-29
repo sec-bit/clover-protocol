@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
 use core::result::Result;
 
-use asvc_rollup::Block;
 use ckb_std::{
     ckb_constants::Source,
     debug,
@@ -9,9 +8,11 @@ use ckb_std::{
     high_level::{load_cell_data, load_cell_lock_hash, load_cell_type_hash},
 };
 
-use ckb_zkp::curve::bn_256::Bn_256;
+use ckb_zkp::curve::bn_256::{Bn_256, Fr};
 use ckb_zkp::math::FromBytes;
 use ckb_zkp::scheme::asvc::{UpdateKey, VerificationKey};
+
+use asvc_rollup::block::Block;
 
 use crate::error::Error;
 
@@ -273,9 +274,9 @@ pub fn main() -> Result<(), Error> {
 }
 
 fn verify(
-    pre: Vec<u8>,
-    now: Vec<u8>,
-    mut upk: Vec<u8>,
+    mut pre: Vec<u8>,
+    mut now: Vec<u8>,
+    upk: Vec<u8>,
     change: u128,
     is_add: bool,
 ) -> Result<(), Error> {
@@ -287,21 +288,21 @@ fn verify(
     pre.remove(0);
     now.remove(0);
 
-    let pre_block = Block::<Bn_256>::from_bytes(pre)?;
-    let now_block = Block::<Bn_256>::from_bytes(pre)?;
+    let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
+    let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
 
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
     }
 
-    let vk = VerificationKey::<Bn_256>::read(&mut upk[..]).unwrap();
-    let omega = Fr::read(&mut upk[..]).unwrap();
+    let vk = VerificationKey::<Bn_256>::read(&upk[..]).unwrap();
+    let omega = Fr::read(&upk[..]).unwrap();
 
     let mut upk_len = [0u8; 4];
     upk_len.copy_from_slice(&upk[0..4]);
     let mut upks = Vec::new();
     for _ in 0..u32::from_le_bytes(upk_len) {
-        upks.push(UpdateKey::<Bn_256>::read(&mut upk[4..]).unwrap());
+        upks.push(UpdateKey::<Bn_256>::read(&upk[4..]).unwrap());
     }
 
     now_block.verify(&vk, omega, &upks).unwrap();
