@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 ckb-std = "0.6.1"
-asvc_rollup = { path = "../../asvc_rollup", default-feautes = false }
+asvc_rollup = { path = "../../asvc_rollup", default-features = false }
 ckb-zkp = { git="https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc", default-features = false, features = ["asvc", "bn_256"] }
 
 [profile.release]
