@@ -145,8 +145,13 @@ impl<E: PairingEngine> Storage<E> {
 
         if !self.pools.contains_key(&tx_hash) {
             match tx.tx_type {
-                TxType::Transfer(from, ..) | TxType::Register(from) => {
-                    // self.tmp_nonces[from as usize] += 1;
+                TxType::Transfer(from, ..)=> {
+                    self.tmp_nonces[from as usize] += 1;
+                    
+                }
+                TxType::Register(from) => {
+                    self.tmp_next_user += 1;
+                    println!("[try_insert_tx]-------tmp_next_user: tx.account={}, tmp_next_user={}",from, self.tmp_next_user);
                 }
                 TxType::Deposit(_to, _amount) => {
                     // not handle deposit
@@ -201,8 +206,8 @@ impl<E: PairingEngine> Storage<E> {
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
                     // println!(
-                    //     "[build_block] - [transfer]: start...from={}, to={}, amount={}, balance={}",
-                    //     from, to, amount, tx.balance
+                    //     "[build_block] - [transfer]: start...from={}, to={}, nonce={}, amount={}, balance={}",
+                    //     from, to, tx.nonce, amount, tx.balance
                     // );
                     tx.balance = self.balances[from as usize];
                     // println!("[build_block] - [transfer]: start...balance={}", tx.balance);
@@ -243,7 +248,7 @@ impl<E: PairingEngine> Storage<E> {
                             } else {
                                 continue;
                             }
-                            // println!("[build_block] verify success...");
+                            println!("[build_block] verify success...");
 
                             froms.push(tx.from());
                             proofs.push(tx.proof.clone());
@@ -309,7 +314,7 @@ impl<E: PairingEngine> Storage<E> {
                             println!("[build_block] - [transfer]:verify failed. 2");
                             continue;
                         }
-                        println!("[build_block] verify success...");
+                        println!("[build_block] verify tx success...");
 
                         froms.push(tx.from());
                         proofs.push(tx.proof.clone());
@@ -387,16 +392,17 @@ impl<E: PairingEngine> Storage<E> {
                             .balances
                             .insert(to, self.balances[to as usize] + amount);
                     }
-                    self.tmp_nonces[from as usize] += 1;
+                    // self.tmp_nonces[from as usize] +=1;
                     txlist.push(tx);
                 }
                 TxType::Register(account) => {
+                    println!("[build_block] register: account: {}", account);
                     tx.balance = self.balances[account as usize];
                     tx.proof = self.proofs[account as usize].clone();
                     let origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
 
                     let from_upk = &self.params.proving_key.update_keys[account as usize];
-                    if account > self.next_user {
+                    if account > self.tmp_next_user {
                         continue;
                     }
                     if point_state.contains_key(&account) {
@@ -407,7 +413,7 @@ impl<E: PairingEngine> Storage<E> {
 
                     point_state.insert(account, (tx.addr, 0, 0, 1, 0));
 
-                    // println!("[build_block] start update commit...old commit={}, account={}",new_commit.clone().commit, account);
+                    // println!("[build_block] start update commit...tx.addr={}, old commit={}, account={}",tx.addr, new_commit.clone().commit, account);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         origin_proof_params,
@@ -418,7 +424,8 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .unwrap();
 
-                    self.tmp_next_user += 1;
+                    // println!("-------tmp_next_user: account={}, tmp_next_user={}, new_commit={}",account, self.tmp_next_user, &new_commit.commit);
+                    // self.tmp_next_user += 1;
                     storage.nonces.insert(account, 1);
                     storage.balances.insert(account, 0);
                     storage.commit = new_commit.clone();
@@ -472,14 +479,15 @@ impl<E: PairingEngine> Storage<E> {
                 return None;
             }
             TxType::Deposit(from, amount) => {
+                
                 tx.balance = self.balances[from as usize];
                 tx.proof = self.proofs[from as usize].clone();
                 let from_upk = &self.params.proving_key.update_keys[from as usize];
                 let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-                println!("[build_block_by_user] deposit... from={}, amount={}, amount_fr={}, commit = {}", from, amount, amount_fr, new_commit.commit);
+                // println!("[build_block_by_user] deposit... from={}, amount={}, amount_fr={}, commit = {}", from, amount, amount_fr, new_commit.commit);
                 new_commit =
                     update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n).unwrap();
-                println!("[build_block_by_user] deposit... amount_fr={}, from={},omega={}, n={}, new_commit = {}", amount_fr, from,omega,n, new_commit.commit);
+                // println!("[build_block_by_user] deposit... amount_fr={}, from={},omega={}, n={}, new_commit = {}", amount_fr, from,omega,n, new_commit.commit);
 
                 txlist.push(tx);
             }
@@ -553,10 +561,10 @@ impl<E: PairingEngine> Storage<E> {
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;
-        println!(
-            "block_height = {}, old commit = {}, new commit = {}",
-            block.block_height, self.commit.commit, block.new_commit.commit
-        );
+        // println!(
+        //     "block_height = {}, old commit = {}, new commit = {}",
+        //     block.block_height, self.commit.commit, block.new_commit.commit
+        // );
         self.commit = block.new_commit;
 
         let mut storage = self.tmp_storages[&block.block_height].clone();
@@ -674,7 +682,8 @@ impl<E: PairingEngine> Storage<E> {
                     E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)),
                 );
                 println!(
-                    "[sync_block] deposit...balance={}",
+                    "[sync_block] deposit...from={}, balance={}",
+                    from,
                     self.balances[from as usize]
                 );
             }
@@ -685,7 +694,8 @@ impl<E: PairingEngine> Storage<E> {
                     E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)).neg(),
                 );
                 println!(
-                    "[sync_block] withdraw...balance={}",
+                    "[sync_block] withdraw...from={}, balance={}",
+                    from,
                     self.balances[from as usize]
                 );
             }
