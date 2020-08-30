@@ -6,6 +6,7 @@ use ckb_zkp::{
     },
     scheme::asvc::{Proof, UpdateKey},
 };
+use core::ops::Neg;
 use sha2::{Digest, Sha256};
 
 use crate::{String, Vec};
@@ -190,6 +191,30 @@ impl<E: PairingEngine> Transaction<E> {
                 E::Fr::zero()
                     + &E::Fr::zero()
                     + &E::Fr::zero()
+            }
+        }
+    }
+
+    #[rustfmt::skip]
+    pub fn delta_value(&self) -> (E::Fr, E::Fr) {
+        let mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
+        let mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
+        let zero = E::Fr::zero();
+
+        match self.tx_type {
+            TxType::Deposit(_from, amount) => {
+                (u128_to_fr::<E>(amount), zero)
+            }
+            TxType::Withdraw(_from, amount) => {
+                (u128_to_fr::<E>(amount).neg(), zero)
+            }
+            TxType::Transfer(_from, _to, amount) => {
+                let amount_fr = u128_to_fr::<E>(amount);
+                (amount_fr.neg() + &mul_160,
+                 amount_fr)
+            }
+            TxType::Register(..) => {
+                (self.addr * &mul_160, zero)
             }
         }
     }

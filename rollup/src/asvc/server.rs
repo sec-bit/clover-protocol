@@ -8,7 +8,7 @@ use std::time::Duration;
 use tide::{Error, Request, StatusCode};
 
 use ckb_zkp::curve::bn_256::Bn_256;
-use ckb_zkp::math::{PairingEngine, ToBytes};
+use ckb_zkp::math::PairingEngine;
 
 mod asvc;
 mod storage;
@@ -16,8 +16,8 @@ mod storage;
 use asvc::initialize_asvc;
 use storage::Storage;
 
-use asvc_rollup::block::{Block, CellUpks};
-use asvc_rollup::transaction::{FullPubKey, PublicKey, SecretKey, Transaction, ACCOUNT_SIZE};
+use asvc_rollup::block::Block;
+use asvc_rollup::transaction::{PublicKey, SecretKey, ACCOUNT_SIZE};
 use ckb_rpc::{
     deploy_contract, init_state, listen_blocks, send_block, send_deposit, send_withdraw,
 };
@@ -45,7 +45,12 @@ async fn listen_contracts<E: PairingEngine>(
                 for (bytes, new_commit, new_upk, is_new_udt) in block {
                     if let Ok(block) = Block::from_bytes(&bytes[..]) {
                         let mut write_storage = storage.write().await;
-                        write_storage.sync_block(block);
+
+                        block
+                            .verify(&write_storage.cell_upks)
+                            .expect("BLOCK VERIFY ERROR");
+
+                        write_storage.handle_block(block);
 
                         write_storage.commit_cell = new_commit.clone();
                         write_storage.upk_cell = new_upk.clone();
@@ -71,16 +76,7 @@ async fn listen_contracts<E: PairingEngine>(
 /// Miner task.
 async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(), std::io::Error> {
     let read_storage = storage.write().await;
-
-    let vk = read_storage.params.verification_key.clone();
-    let upks = read_storage.params.proving_key.update_keys.clone();
-    let omega = read_storage.omega.clone();
-    let cell_upks = CellUpks {
-        vk: vk,
-        omega: omega,
-        upks: upks,
-    };
-
+    let cell_upks = read_storage.cell_upks.clone();
     drop(read_storage);
 
     loop {
@@ -137,28 +133,19 @@ async fn register<E: PairingEngine>(
     let params: RegisterRequest = req.body_json().await?;
     println!("new next user: {:?}", params);
 
-    let (pubkey, psk) = (
+    let (pubkey, sk) = (
         PublicKey::from_hex(&params.pubkey).unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
     );
 
     let read_storage = req.state().read().await;
 
-    let (account, upk) = read_storage.new_next_user();
-    println!("new next user: {}", account);
-    let proof = read_storage.user_proof(account).clone();
-
-    let fpk = FullPubKey::<E> {
-        i: account,
-        update_key: upk,
-        tradition_pubkey: pubkey.clone(),
-    };
-
-    let tx = Transaction::<E>::new_register(account, fpk, 0, 0, proof, &psk);
-
-    let tx_id = tx.id();
+    let account = read_storage.next_user();
+    let tx = read_storage.new_register(account, pubkey, &sk);
 
     drop(read_storage);
+
+    let tx_id = tx.id();
 
     let mut write_storage = req.state().write().await;
 
@@ -184,8 +171,6 @@ async fn deposit<E: PairingEngine>(
 
     let read_storage = req.state().read().await;
 
-    println!("NOW {:?}", read_storage.next_user);
-
     if !read_storage.contains_users(&[from]) {
         return Err(Error::from_str(
             StatusCode::BadRequest,
@@ -193,20 +178,18 @@ async fn deposit<E: PairingEngine>(
         ));
     }
 
-    let fpk = read_storage.user_fpk(from);
-    let nonce = read_storage.new_next_nonce(from);
-    let balance = read_storage.user_balance(from);
-    let proof = read_storage.user_proof(from);
-
-    println!("[deposit] nonce={}, balance={}", nonce, balance);
-    let tx = Transaction::<E>::new_deposit(from, amount, fpk, nonce, balance, proof, &sk);
+    let tx = read_storage.new_deposit(from, amount, &sk);
 
     drop(read_storage);
 
     let mut write_storage = req.state().write().await;
 
     if let Some(block) = write_storage.build_block_by_user(tx) {
-        println!("deposit create_block: {}", block.txs.len());
+        let res = block.verify(&write_storage.cell_upks);
+        //.expect("DEPOSIT BLOCK VERIFY FAILURE");
+
+        println!("=========BLOCK DEPOSIT: {:?}", res);
+
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;
         let success_hash: &String = &write_storage.udt_lock;
@@ -218,14 +201,7 @@ async fn deposit<E: PairingEngine>(
         let udt_amount: u128 = write_storage.total_udt_amount + amount;
         let my_udt_amount: u128 = write_storage.my_udt_amount - amount;
 
-        let vk = write_storage.params.verification_key.clone();
-        let upks = write_storage.params.proving_key.update_keys.clone();
-        let omega = write_storage.omega.clone();
-        let cell_upks = CellUpks {
-            vk: vk,
-            omega: omega,
-            upks: upks,
-        };
+        let cell_upks = write_storage.cell_upks.to_bytes();
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, new_my_udt, tx_id)) = send_deposit(
             rollup_hash,
@@ -236,7 +212,7 @@ async fn deposit<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
-            cell_upks.to_bytes(),
+            cell_upks,
             udt_amount,
             my_udt_amount,
         )
@@ -287,7 +263,7 @@ async fn withdraw<E: PairingEngine>(
         ));
     }
 
-    let balance = read_storage.user_balance(from);
+    let balance = read_storage.pool_balance(from);
 
     if amount > balance {
         return Err(Error::from_str(
@@ -296,16 +272,16 @@ async fn withdraw<E: PairingEngine>(
         ));
     }
 
-    let fpk = read_storage.user_fpk(from);
-    let nonce = read_storage.new_next_nonce(from);
-    let proof = read_storage.user_proof(from);
-
-    let tx = Transaction::<E>::new_withdraw(from, amount, fpk, nonce, balance, proof, &sk);
-
+    let tx = read_storage.new_withdraw(from, amount, &sk);
     drop(read_storage);
+
     let mut write_storage = req.state().write().await;
 
     if let Some(block) = write_storage.build_block_by_user(tx) {
+        block
+            .verify(&write_storage.cell_upks)
+            .expect("WITHDRAW BLOCK VERIFY FAILURE");
+
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;
         let success_hash: &String = &write_storage.udt_lock;
@@ -316,14 +292,7 @@ async fn withdraw<E: PairingEngine>(
         let udt_amount: u128 = write_storage.total_udt_amount - amount;
         let my_udt_amount: u128 = amount;
 
-        let vk = write_storage.params.verification_key.clone();
-        let upks = write_storage.params.proving_key.update_keys.clone();
-        let omega = write_storage.omega.clone();
-        let cell_upks = CellUpks {
-            vk: vk,
-            omega: omega,
-            upks: upks,
-        };
+        let cell_upks = write_storage.cell_upks.to_bytes();
 
         if let Ok((new_commit_cell, new_upk_cell, new_udt_cell, tx_id)) = send_withdraw(
             rollup_hash,
@@ -333,7 +302,7 @@ async fn withdraw<E: PairingEngine>(
             pre_upk_hash,
             pre_udt_hash,
             block,
-            cell_upks.to_bytes(),
+            cell_upks,
             udt_amount,
             my_udt_amount,
         )
@@ -368,16 +337,11 @@ async fn transfer<E: PairingEngine>(
     mut req: Request<Arc<RwLock<Storage<E>>>>,
 ) -> Result<String, Error> {
     let params: TransferRequest = req.body_json().await?;
-    let (from, to, amount, psk) = (
+    let (from, to, amount, sk) = (
         params.from.parse().unwrap(),
         params.to.parse().unwrap(),
         params.amount.parse().unwrap(),
         SecretKey::from_hex(&params.psk).unwrap(),
-    );
-
-    println!(
-        "Recv transfer tx: from {}, to {}, amount {}",
-        from, to, amount
     );
 
     let read_storage = req.state().read().await;
@@ -389,15 +353,11 @@ async fn transfer<E: PairingEngine>(
         ));
     }
 
-    let from_fpk = read_storage.user_fpk(from);
-    let nonce = read_storage.new_next_nonce(from);
-    
-    let balance = read_storage.user_balance(from);
-    let proof = read_storage.user_proof(from);
+    let balance = read_storage.pool_balance(from);
 
     println!(
-        "transfer balance: balance:{}, from: {}, to: {}, amount {}, nonce: {}",
-        balance, from, to, amount, nonce,
+        "transfer balance: from balance: {}, from: {}, to: {}, amount {}",
+        balance, from, to, amount
     );
 
     if amount > balance {
@@ -407,12 +367,11 @@ async fn transfer<E: PairingEngine>(
         ));
     }
 
-    let tx =
-        Transaction::<E>::new_transfer(from, to, amount, from_fpk, nonce, balance, proof, &psk);
+    let tx = read_storage.new_transfer(from, to, amount, &sk);
 
     let tx_hash_id = tx.id();
-
     drop(read_storage);
+
     let mut write_storage = req.state().write().await;
     if write_storage.try_insert_tx(tx) {
         drop(write_storage);
@@ -450,23 +409,11 @@ async fn setup<E: PairingEngine>(req: Request<Arc<RwLock<Storage<E>>>>) -> Resul
         txs: vec![],
     };
 
-    let vk = storage.params.verification_key.clone();
-    let upks = storage.params.proving_key.update_keys.clone();
-    let omega = storage.omega.clone();
-    let cell_upks = CellUpks {
-        vk: vk,
-        omega: omega,
-        upks: upks,
-    };
+    let cell_upks = storage.cell_upks.to_bytes();
 
     // send init state to chain.
-    if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) = init_state(
-        rollup_lock,
-        rollup_dep,
-        block.to_bytes(),
-        cell_upks.to_bytes(),
-    )
-    .await
+    if let Ok((commit_cell, upk_cell, udt_cell, tx_id)) =
+        init_state(rollup_lock, rollup_dep, block.to_bytes(), cell_upks).await
     {
         storage.commit_cell = commit_cell;
         storage.upk_cell = upk_cell;

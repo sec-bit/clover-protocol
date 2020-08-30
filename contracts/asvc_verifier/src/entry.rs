@@ -318,7 +318,11 @@ fn verify(
     change: u128,
     is_add: bool,
 ) -> Result<(), Error> {
-    debug!("on-chain udt pool change: {}{}", if is_add { "+" } else { "-" }, change);
+    debug!(
+        "on-chain udt pool change: {}{}",
+        if is_add { "+" } else { "-" },
+        change
+    );
 
     pre.remove(0);
     now.remove(0);

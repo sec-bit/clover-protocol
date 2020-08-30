@@ -1,37 +1,28 @@
-use ckb_zkp::curve::Field;
-use ckb_zkp::gadgets::mimc;
-use ckb_zkp::math::{fft::EvaluationDomain, BigInteger, PairingEngine, PrimeField, ToBytes, Zero};
+use ckb_zkp::math::{fft::EvaluationDomain, PairingEngine};
 use ckb_zkp::scheme::asvc::{
-    aggregate_proofs, update_commit, verify_pos, Commitment, Parameters, Proof, UpdateKey,
+    aggregate_proofs, update_commit, Commitment, Parameters, Proof, UpdateKey,
 };
 use ckb_zkp::scheme::r1cs::SynthesisError;
 use std::collections::HashMap;
-use ordermap::OrderMap;
-use std::ops::{Add, Mul, Neg, Sub};
+
+use asvc_rollup::block::{Block, CellUpks};
+use asvc_rollup::transaction::{
+    FullPubKey, PublicKey, SecretKey, Transaction, TxHash, TxType, ACCOUNT_SIZE,
+};
+use indexmap::IndexMap;
 
 use super::asvc::update_proofs;
-
-use asvc_rollup::block::Block;
-use asvc_rollup::transaction::{u128_to_fr, FullPubKey, Transaction, TxHash, TxType, ACCOUNT_SIZE};
-
-#[derive(Clone)]
-pub struct block_storage<E: PairingEngine> {
-    pub commit: Commitment<E>,
-    // pub next_user: u32,
-    pub balances: HashMap<u32, u128>,
-    pub nonces: HashMap<u32, u32>,
-    // pub txhashes: Vec<TxHash>,
-}
 
 pub struct Storage<E: PairingEngine> {
     pub block_height: u32,
     pub tmp_block_height: u32,
     pub blocks: Vec<Block<E>>,
-    pub pools: OrderMap<TxHash, Transaction<E>>,
+    pub pools: IndexMap<TxHash, Transaction<E>>,
 
     /// const params
     pub omega: E::Fr,
     pub params: Parameters<E>,
+    pub cell_upks: CellUpks<E>,
 
     /// all accounts current proof.
     pub commit: Commitment<E>,
@@ -43,11 +34,10 @@ pub struct Storage<E: PairingEngine> {
     pub tmp_next_user: u32,
 
     pub balances: Vec<u128>,
-    // pub tmp_balances: Vec<u128>,
+    pub tmp_balances: Vec<u128>,
+
     pub nonces: Vec<u32>,
     pub tmp_nonces: Vec<u32>,
-
-    pub tmp_storages: HashMap<u32, block_storage<E>>,
 
     pub rollup_lock: String,
     pub rollup_dep: String,
@@ -71,23 +61,30 @@ impl<E: PairingEngine> Storage<E> {
             .ok_or(SynthesisError::PolynomialDegreeTooLarge)
             .unwrap();
 
+        let omega = domain.group_gen;
+        let cell_upks = CellUpks {
+            vk: params.verification_key.clone(),
+            omega: omega,
+            upks: params.proving_key.update_keys.clone(),
+        };
+
         Self {
             block_height: 0,
             tmp_block_height: 0,
-            omega: domain.group_gen,
+            omega: omega,
+            cell_upks: cell_upks,
             blocks: vec![],
-            pools: OrderMap::new(),
+            pools: IndexMap::new(),
             proofs: proofs,
             params: params,
             commit: commit,
             next_user: 0u32,
             tmp_next_user: 0u32,
             balances: vec![0u128; ACCOUNT_SIZE],
-            // tmp_balances: vec![0u128; ACCOUNT_SIZE],
+            tmp_balances: vec![0u128; ACCOUNT_SIZE],
             nonces: vec![0u32; ACCOUNT_SIZE],
             tmp_nonces: vec![0u32; ACCOUNT_SIZE],
             full_pubkeys: full_pubkeys,
-            tmp_storages: HashMap::new(),
 
             rollup_lock: String::new(),
             rollup_dep: String::new(),
@@ -101,22 +98,12 @@ impl<E: PairingEngine> Storage<E> {
         }
     }
 
-    pub fn new_next_nonce(&self, u: u32) -> u32 {
-        self.tmp_nonces[u as usize] + 1
+    pub fn next_nonce(&self, u: u32) -> u32 {
+        self.tmp_nonces[u as usize]
     }
 
-    pub fn new_and_inc_next_nonce(&mut self, u: u32) -> u32 {
-        let nonce = self.tmp_nonces[u as usize];
-        self.tmp_nonces[u as usize] = nonce + 1;
-        nonce + 1
-    }
-
-    pub fn new_next_user(&self) -> (u32, UpdateKey<E>) {
-        let account = self.tmp_next_user;
-        (
-            account,
-            self.params.proving_key.update_keys[account as usize].clone(),
-        )
+    pub fn next_user(&self) -> u32 {
+        self.tmp_next_user
     }
 
     pub fn contains_users(&self, us: &[u32]) -> bool {
@@ -132,13 +119,77 @@ impl<E: PairingEngine> Storage<E> {
         self.full_pubkeys[u as usize].clone()
     }
 
+    pub fn user_upk(&self, u: u32) -> &UpdateKey<E> {
+        &self.params.proving_key.update_keys[u as usize]
+    }
+
     pub fn user_proof(&self, u: u32) -> Proof<E> {
         self.proofs[u as usize].clone()
     }
 
-    pub fn user_balance(&self, u: u32) -> u128 {
-        // self.tmp_balances[u as usize]
-        self.balances[u as usize]
+    pub fn pool_balance(&self, u: u32) -> u128 {
+        self.tmp_balances[u as usize]
+    }
+
+    pub fn new_transfer(&self, from: u32, to: u32, amount: u128, sk: &SecretKey) -> Transaction<E> {
+        Transaction::new_transfer(
+            from,
+            to,
+            amount,
+            self.user_fpk(from),
+            self.next_nonce(from),
+            // in one block, balance if current block balance, not tmp_balance
+            self.balances[from as usize],
+            self.user_proof(from),
+            &sk,
+        )
+    }
+
+    pub fn new_deposit(&self, from: u32, amount: u128, sk: &SecretKey) -> Transaction<E> {
+        Transaction::new_deposit(
+            from,
+            amount,
+            self.user_fpk(from),
+            // use current block's nonce, not add it.
+            self.nonces[from as usize],
+            // in one block, balance if current block balance, not tmp_balance
+            self.balances[from as usize],
+            self.user_proof(from),
+            &sk,
+        )
+    }
+
+    pub fn new_withdraw(&self, from: u32, amount: u128, sk: &SecretKey) -> Transaction<E> {
+        Transaction::new_withdraw(
+            from,
+            amount,
+            self.user_fpk(from),
+            // use current block's nonce, not add it.
+            self.nonces[from as usize],
+            // in one block, balance if current block balance, not tmp_balance
+            self.balances[from as usize],
+            self.user_proof(from),
+            &sk,
+        )
+    }
+
+    pub fn new_register(&self, from: u32, pk: PublicKey, sk: &SecretKey) -> Transaction<E> {
+        let new_fpk = FullPubKey::<E> {
+            i: from,
+            update_key: self.user_upk(from).clone(),
+            tradition_pubkey: pk,
+        };
+
+        Transaction::new_register(
+            from,
+            new_fpk,
+            // when register his nonce must eq = 0
+            0,
+            // in one block, balance if current block balance, not tmp_balance
+            self.balances[from as usize],
+            self.user_proof(from),
+            &sk,
+        )
     }
 
     pub fn try_insert_tx(&mut self, tx: Transaction<E>) -> bool {
@@ -146,13 +197,14 @@ impl<E: PairingEngine> Storage<E> {
 
         if !self.pools.contains_key(&tx_hash) {
             match tx.tx_type {
-                TxType::Transfer(from, ..)=> {
+                TxType::Transfer(from, to, amount) => {
                     self.tmp_nonces[from as usize] += 1;
-                    
+                    self.tmp_balances[from as usize] -= amount;
+                    self.tmp_balances[to as usize] += amount;
                 }
                 TxType::Register(from) => {
                     self.tmp_next_user += 1;
-                    // println!("[try_insert_tx]-------tmp_next_user: tx.account={}, tmp_next_user={}",from, self.tmp_next_user);
+                    self.tmp_nonces[from as usize] += 1;
                 }
                 TxType::Deposit(_to, _amount) => {
                     // not handle deposit
@@ -170,286 +222,87 @@ impl<E: PairingEngine> Storage<E> {
         true
     }
 
-    /// transfer & register use when operate on L1, need build a block to change.
-    pub fn build_block(&mut self, txs: Vec<Transaction<E>>) -> Option<Block<E>> {
+    /// deposit & withdraw use when operate on L1, need build a block to change.
+    pub fn build_block(&mut self, mut txs: Vec<Transaction<E>>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
 
         let mut new_commit = self.commit.clone();
 
-        let mut proofs = Vec::<Proof<E>>::new();
-        let mut froms = vec![];
+        let mut froms = IndexMap::new();
+        let mut txlist: Vec<Transaction<E>> = vec![];
 
-        //let nonce_offest_fr = E::Fr::one() >> 128;
-        // let mut repr = <E::Fr as PrimeField>::BigInt::from(1);
-        // for _ in 0..128 {
-        //     // balance is u128
-        //     repr.div2();
-        // }
+        println!("START BUILD BLOCK.... txs: {}", txs.len());
 
-        let nonce_offest_fr = E::Fr::from(2).pow(&[128]);
-        // <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
+        loop {
+            if txs.len() == 0 {
+                break;
+            }
 
-        let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
-
-        let mut storage = block_storage {
-            commit: new_commit.clone(),
-            balances: HashMap::new(),
-            nonces: HashMap::new(),
-        };
-
-        let mut txlist = Vec::<Transaction<E>>::new();
-
-        // println!("[build_block] len= {}", txs.len());
-        for tx in txs.iter() {
-            let mut tx = tx.clone();
+            let tx = txs.remove(0);
 
             match tx.tx_type {
-                TxType::Transfer(from, to, amount) => {
-                    // println!(
-                    //     "[build_block] - [transfer]: start...from={}, to={}, nonce={}, amount={}, balance={}",
-                    //     from, to, tx.nonce, amount, tx.balance
-                    // );
-                    tx.balance = self.balances[from as usize];
-                    // println!("[build_block] - [transfer]: start...balance={}", tx.balance);
+                TxType::Transfer(from, to, _amount) => {
+                    let (from_amount, to_amount) = tx.delta_value();
 
-                    tx.proof = self.proofs[from as usize].clone();
-                    let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-                    let from_upk = &self.params.proving_key.update_keys[from as usize];
-
-                    if point_state.contains_key(&from) {
-                        let (addr, nonce, balance, next_nonce, balance_change) = point_state[&from];
-                        if next_nonce == 0 {
-                            // no proof
-                            if amount as i128 > tx.balance as i128 + balance_change {
-                                continue;
-                            }
-                            // println!("[build_block] - [transfer] contains key...nonce={}, from={}, last nonce={}", tx.nonce, from, self.nonces[from as usize]);
-
-                            let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                            origin_proof_params += &(E::Fr::from_repr(
-                                <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                            )
-                            .mul(&E::Fr::from(2).pow(&[128])));
-                            origin_proof_params += &(E::Fr::from_repr(
-                                <E::Fr as PrimeField>::BigInt::from_u128(tx.balance),
-                            ));
-
-                            if let Ok(res) = verify_pos::<E>(
-                                &self.params.verification_key,
-                                &self.commit,
-                                vec![origin_proof_params],
-                                vec![from],
-                                &tx.proof,
-                                omega,
-                            ) {
-                                if !res {
-                                    continue;
-                                }
-                            } else {
-                                continue;
-                            }
-                            // println!("[build_block] nonce={} verify success...", tx.nonce);
-
-                            froms.push(tx.from());
-                            proofs.push(tx.proof.clone());
-                            point_state.insert(
-                                from,
-                                (
-                                    tx.addr,
-                                    tx.nonce - 1,
-                                    tx.balance,
-                                    tx.nonce + 1,
-                                    balance_change - amount as i128,
-                                ),
-                            );
-                        } else {
-                            if amount as i128 > tx.balance as i128 + balance_change {
-                                // println!("[build_block] - [transfer]: error1: balance={}, balance_change={}, amount={},  nonce={}, from={}, to={}", 
-                                // tx.balance, balance_change, amount, nonce, from, to);
-                                continue;
-                            }
-                            if tx.nonce != next_nonce {
-                                // println!("[build_block] - [transfer]: balance={}, balance_change={}, amount={},  nonce={}, next_nonce={}, from={}, to={}", 
-                                // tx.balance, balance_change, amount, nonce, next_nonce, from, to);
-                                continue;
-                            }
-                            point_state.insert(
-                                from,
-                                (
-                                    addr,
-                                    nonce,
-                                    balance,
-                                    tx.nonce + 1,
-                                    balance_change - amount as i128,
-                                ),
-                            );
-                        }
-                    } else {
-                        // println!(
-                        //     "[build_block] - [transfer]: no contains_key...amount={}, balance={}",
-                        //     amount, tx.balance
-                        // );
-                        if amount > tx.balance {
-                            continue;
-                        }
-                        let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                        origin_proof_params += &(E::Fr::from_repr(
-                            <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                        )
-                        .mul(&E::Fr::from(2).pow(&[128])));
-                        origin_proof_params += &(E::Fr::from_repr(
-                            <E::Fr as PrimeField>::BigInt::from_u128(tx.balance),
-                        ));
-
-                        // println!("[build_block] - [transfer]: no contains_key...origin_proof_params={}, tx.nonce={}, tx.balance={}", origin_proof_params, tx.nonce, tx.balance);
-                        if let Ok(res) = verify_pos::<E>(
-                            &self.params.verification_key,
-                            &self.commit,
-                            vec![origin_proof_params],
-                            vec![from],
-                            &tx.proof,
-                            omega,
-                        ) {
-                            if !res {
-                                // println!("[build_block] - [transfer]:verify failed. 1");
-                                continue;
-                            }
-                        } else {
-                            // println!("[build_block] - [transfer]:verify failed. 2");
-                            continue;
-                        }
-                        // println!("[build_block] nonce={}, verify tx success...",tx.nonce);
-
-                        froms.push(tx.from());
-                        proofs.push(tx.proof.clone());
-                        point_state.insert(
-                            from,
-                            (
-                                tx.addr,
-                                tx.nonce - 1,
-                                tx.balance,
-                                tx.nonce + 1,
-                                0 - amount as i128,
-                            ),
-                        );
-                    }
-                    // println!("[build_block] start update commit...old commit={}, amount_fr={}, from={}",new_commit.clone().commit, amount_fr, from);
+                    // UPDATE FROM
                     new_commit = update_commit::<E>(
                         &new_commit,
-                        amount_fr.neg().add(&nonce_offest_fr),
+                        from_amount,
                         from,
-                        from_upk,
+                        &self.user_upk(from),
                         omega,
                         n,
                     )
-                    .unwrap();
+                    .expect("UPDATE TRANSFER FROM COMMIT FAILURE");
 
-                    // println!("[build_block] start handle to account...");
-
-                    if point_state.contains_key(&to) {
-                        let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
-                        point_state.insert(
-                            to,
-                            (
-                                addr,
-                                nonce,
-                                balance,
-                                next_nonce,
-                                balance_change + amount as i128,
-                            ),
-                        );
-                    } else {
-                        point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
-                    }
-
-                    // println!("[build_block] start update commit...old commit={}, amount_fr={}, to={}",new_commit.clone().commit, amount_fr, to);
+                    // UPDATE TO
                     new_commit = update_commit::<E>(
                         &new_commit,
-                        amount_fr,
+                        to_amount,
                         to,
-                        &self.full_pubkeys[to as usize].update_key,
+                        &self.user_upk(from),
                         omega,
                         n,
                     )
-                    .unwrap();
+                    .expect("UPDATE TRANSFER TO COMMIT FAILURE");
 
-                    if storage.nonces.contains_key(&from) {
-                        let nonce = storage.nonces[&from];
-                        storage.nonces.insert(from, nonce + 1);
-                    } else {
-                        storage.nonces.insert(from, self.nonces[from as usize] + 1);
+                    if !froms.contains_key(&tx.from()) {
+                        froms.insert(tx.from(), tx.proof.clone());
                     }
-                    if storage.balances.contains_key(&from) {
-                        let balance = storage.balances[&from];
-                        storage.balances.insert(from, balance - amount);
-                    } else {
-                        storage
-                            .balances
-                            .insert(from, self.balances[from as usize] - amount);
-                    }
-
-                    if storage.balances.contains_key(&to) {
-                        let balance = storage.balances[&to];
-                        storage.balances.insert(to, balance + amount);
-                    } else {
-                        storage
-                            .balances
-                            .insert(to, self.balances[to as usize] + amount);
-                    }
-                    // self.tmp_nonces[from as usize] +=1;
-                    txlist.push(tx);
                 }
                 TxType::Register(account) => {
-                    println!("[build_block] register: account: {}", account);
-                    tx.balance = self.balances[account as usize];
-                    tx.proof = self.proofs[account as usize].clone();
-                    let origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-
-                    let from_upk = &self.params.proving_key.update_keys[account as usize];
-                    if account > self.tmp_next_user {
-                        continue;
-                    }
-                    if point_state.contains_key(&account) {
-                        continue;
-                    }
-                    froms.push(tx.from());
-                    proofs.push(tx.proof.clone());
-
-                    point_state.insert(account, (tx.addr, 0, 0, 1, 0));
-
-                    // println!("[build_block] start update commit...tx.addr={}, old commit={}, account={}",tx.addr, new_commit.clone().commit, account);
                     new_commit = update_commit::<E>(
                         &new_commit,
-                        origin_proof_params,
+                        tx.delta_value().0,
                         account,
-                        &from_upk,
+                        &self.user_upk(account),
                         omega,
-                        n as usize,
+                        n,
                     )
-                    .unwrap();
+                    .expect("UPDATE REGISTER COMMIT FAILURE");
 
-                    // println!("-------tmp_next_user: account={}, tmp_next_user={}, new_commit={}",account, self.tmp_next_user, &new_commit.commit);
-                    // self.tmp_next_user += 1;
-                    storage.nonces.insert(account, 1);
-                    storage.balances.insert(account, 0);
-                    storage.commit = new_commit.clone();
-
-                    txlist.push(tx);
+                    if !froms.contains_key(&tx.from()) {
+                        froms.insert(tx.from(), tx.proof.clone());
+                    }
                 }
-                TxType::Deposit(from, amount) => {
-                    return None;
+                TxType::Deposit(..) => {
+                    panic!("NOOOOOP");
                 }
-                TxType::Withdraw(from, amount) => {
-                    return None;
+                TxType::Withdraw(..) => {
+                    panic!("NOOOOOP");
                 }
             }
+
+            txlist.push(tx);
         }
 
-        let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
-
-        storage.commit = new_commit.clone();
-        self.tmp_storages.insert(self.block_height + 1, storage);
+        let proof = aggregate_proofs::<E>(
+            froms.keys().map(|v| *v).collect(),
+            froms.values().map(|v| v.clone()).collect(),
+            omega,
+        )
+        .expect("AGGREGATE ERROR");
 
         let block = Block {
             proof,
@@ -461,6 +314,7 @@ impl<E: PairingEngine> Storage<E> {
 
         Some(block)
     }
+
     /// deposit & withdraw use when operate on L1, need build a block to change.
     pub fn build_block_by_user(&mut self, tx: Transaction<E>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
@@ -468,81 +322,43 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut new_commit = self.commit.clone();
 
-        let mut proofs = Vec::<Proof<E>>::new();
-        let mut froms = vec![];
-
-        let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
-
-        let mut txlist = Vec::new();
-        let mut tx = tx.clone();
-
         match tx.tx_type {
-            TxType::Transfer(from, to, amount) => {
-                return None;
+            TxType::Transfer(..) | TxType::Register(..) => {
+                panic!("NOOOOP");
             }
-            TxType::Register(account) => {
-                return None;
-            }
-            TxType::Deposit(from, amount) => {
-                
-                tx.balance = self.balances[from as usize];
-                tx.proof = self.proofs[from as usize].clone();
-                let from_upk = &self.params.proving_key.update_keys[from as usize];
-                let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-                // println!("[build_block_by_user] deposit... from={}, amount={}, amount_fr={}, commit = {}", from, amount, amount_fr, new_commit.commit);
-                new_commit =
-                    update_commit::<E>(&new_commit, amount_fr, from, from_upk, omega, n).unwrap();
-                // println!("[build_block_by_user] deposit... amount_fr={}, from={},omega={}, n={}, new_commit = {}", amount_fr, from,omega,n, new_commit.commit);
-
-                txlist.push(tx);
-            }
-            TxType::Withdraw(from, amount) => {
-                tx.balance = self.balances[from as usize];
-                tx.proof = self.proofs[from as usize].clone();
-                let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                origin_proof_params +=
-                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1))
-                        .mul(&E::Fr::from(2).pow(&[128])));
-                origin_proof_params +=
-                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(tx.balance)));
-
-                let from_upk = &self.params.proving_key.update_keys[from as usize];
-                let amount_fr: E::Fr = u128_to_fr::<E>(amount);
-
-                if let Ok(res) = verify_pos::<E>(
-                    &self.params.verification_key,
-                    &self.commit,
-                    vec![origin_proof_params],
-                    vec![from],
-                    &tx.proof,
+            TxType::Deposit(from, _amount) => {
+                new_commit = update_commit::<E>(
+                    &new_commit,
+                    tx.delta_value().0,
+                    from,
+                    &self.user_upk(from),
                     omega,
-                ) {
-                    if !res {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-
-                froms.push(tx.from());
-                proofs.push(tx.proof.clone());
-
-                new_commit =
-                    update_commit::<E>(&new_commit, amount_fr.neg(), from, from_upk, omega, n)
-                        .unwrap();
-
-                txlist.push(tx);
+                    n,
+                )
+                .expect("UPDATE COMMIT DEPOSIT FAILURE");
+            }
+            TxType::Withdraw(from, _amount) => {
+                new_commit = update_commit::<E>(
+                    &new_commit,
+                    tx.delta_value().0,
+                    from,
+                    &self.user_upk(from),
+                    omega,
+                    n,
+                )
+                .expect("UPDATE COMMIT DEPOSIT FAILURE");
             }
         }
 
-        let proof = aggregate_proofs::<E>(froms, proofs, omega).unwrap();
+        let proof = aggregate_proofs::<E>(vec![tx.from()], vec![tx.proof.clone()], omega)
+            .expect("AGGREGATE PROOFS ERROR");
 
         let block = Block {
             proof,
             block_height: self.block_height + 1,
             commit: self.commit.clone(),
             new_commit: new_commit,
-            txs: txlist,
+            txs: vec![tx],
         };
 
         Some(block)
@@ -556,83 +372,76 @@ impl<E: PairingEngine> Storage<E> {
         }
 
         let txs = self.pools.drain(..).map(|(_k, v)| v).collect();
-        // let mut txs = self.pools.clone();
         self.build_block(txs)
     }
 
     /// handle when the block commit to L1.
     pub fn handle_block(&mut self, block: Block<E>) {
-        println!("HANDLE BLOCK: {}", block.block_height);
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;
-        // println!(
-        //     "block_height = {}, old commit = {}, new commit = {}",
-        //     block.block_height, self.commit.commit, block.new_commit.commit
-        // );
-        self.commit = block.new_commit;
+        let mut cvalues = HashMap::new();
 
-        let mut storage = self.tmp_storages[&block.block_height].clone();
-        let mut cvalues = HashMap::<u32, E::Fr>::new();
-        for (account, balance) in storage.balances.drain() {
-            // println!("account={}， balance={}, self.balances[account as usize]={}", account, balance, self.balances[account as usize]);
-
-            if balance >= self.balances[account as usize] {
-                let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
-                    balance - &self.balances[account as usize],
-                ));
-                cvalues.insert(account, cv);
-                self.balances[account as usize] = balance;
-            } else {
-                let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
-                    self.balances[account as usize] - &balance,
-                ))
-                .neg();
-                cvalues.insert(account, cv);
-                self.balances[account as usize] = balance;
-            }
-        }
-        for (account, nonce) in storage.nonces.drain() {
-            let mut cv = E::Fr::zero();
-            if cvalues.contains_key(&account) {
-                cv = cvalues[&account];
-            }
-            cv += &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(
-                (nonce - &self.nonces[account as usize]) as u64,
-            ))
-            .mul(&E::Fr::from(2).pow(&[128])));
-            cvalues.insert(account, cv);
-            self.nonces[account as usize] = nonce;
-        }
-
-        // change register full_pubkey
+        // 1. update balance & fpk
         for tx in block.txs {
             match tx.tx_type {
-                TxType::Register(account) => {
-                    let upk = self.params.proving_key.update_keys[account as usize].clone();
+                TxType::Deposit(from, amount) => {
+                    self.balances[from as usize] += amount;
+                    self.tmp_balances[from as usize] += amount;
+                    let delta = tx.delta_value().0;
 
-                    if self.next_user <= account {
-                        self.next_user = account + 1
-                    }
+                    cvalues
+                        .entry(from)
+                        .and_modify(|f| *f += &delta)
+                        .or_insert(delta);
+                }
+                TxType::Withdraw(from, amount) => {
+                    self.balances[from as usize] -= amount;
+                    self.tmp_balances[from as usize] -= amount;
+                    let delta = tx.delta_value().0;
+
+                    cvalues
+                        .entry(from)
+                        .and_modify(|f| *f += &delta)
+                        .or_insert(delta);
+                }
+                TxType::Transfer(from, to, amount) => {
+                    self.balances[from as usize] -= amount;
+                    self.balances[to as usize] += amount;
+
+                    let (from_delta, to_delta) = tx.delta_value();
+
+                    cvalues
+                        .entry(from)
+                        .and_modify(|f| *f += &from_delta)
+                        .or_insert(from_delta);
+
+                    cvalues
+                        .entry(to)
+                        .and_modify(|f| *f += &to_delta)
+                        .or_insert(to_delta);
+                }
+                TxType::Register(account) => {
                     self.full_pubkeys[account as usize] = FullPubKey {
                         i: account,
-                        update_key: upk,
+                        update_key: self.user_upk(account).clone(),
                         tradition_pubkey: tx.pubkey.clone(),
                     };
-
-                    let mut cv = E::Fr::zero();
-                    if cvalues.contains_key(&account) {
-                        cv = cvalues[&account];
-                    }
-
-                    cv += &tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                    cvalues.insert(account, cv);
-
                     self.next_user += 1;
+
+                    let delta = tx.delta_value().0;
+
+                    cvalues
+                        .entry(account)
+                        .and_modify(|f| *f += &delta)
+                        .or_insert(delta);
                 }
-                _ => continue,
             }
         }
+
+        // 2. UPDATE COMMIT
+        self.commit = block.new_commit;
+        self.block_height = block.block_height;
 
         update_proofs::<E>(
             &self.params.proving_key.update_keys,
@@ -641,93 +450,16 @@ impl<E: PairingEngine> Storage<E> {
             &cvalues,
             n as usize,
         )
-        .unwrap();
-        // println!("[handle_block]update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
+        .expect("UPDATE PROOFS FAILURE");
 
-        self.block_height = block.block_height;
-        let mut removes = Vec::new();
-        for (height, storage) in self.tmp_storages.drain() {
-            if height <= block.block_height {
-                removes.push(height)
-                // self.tmp_storages.remove(&height);
-            }
-        }
-        for i in removes.iter() {
-            self.tmp_storages.remove(&i);
+        // 3. UPDATE POOL
+        for (_hash, tx) in self.pools.iter_mut() {
+            let from = tx.from();
+            tx.balance = self.balances[from as usize];
+            tx.proof = self.proofs[from as usize].clone();
         }
 
         println!("HANDLE BLOCK OVER");
-    }
-
-    pub fn sync_block(&mut self, block: Block<E>) {
-        println!("HANDLE SYNC BLOCK: {}", block.block_height);
-        if block.block_height <= self.block_height {
-            return;
-        }
-
-        if block.block_height > self.block_height + 1 {
-            // error
-            return;
-        }
-        if block.txs.len() != 1 {
-            //error
-            return;
-        }
-
-        let n = ACCOUNT_SIZE;
-        let omega = self.omega;
-        let tx = block.txs[0].clone();
-
-        let mut cvalues = HashMap::<u32, E::Fr>::new();
-        match tx.tx_type {
-            TxType::Deposit(from, amount) => {
-                self.balances[from as usize] += amount;
-                cvalues.insert(
-                    from as u32,
-                    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)),
-                );
-                println!(
-                    "[sync_block] deposit...from={}, balance={}",
-                    from,
-                    self.balances[from as usize]
-                );
-            }
-            TxType::Withdraw(from, amount) => {
-                self.balances[from as usize] -= amount;
-                cvalues.insert(
-                    from as u32,
-                    E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(amount)).neg(),
-                );
-                println!(
-                    "[sync_block] withdraw...from={}, balance={}",
-                    from,
-                    self.balances[from as usize]
-                );
-            }
-            TxType::Register(_account) => {
-                return;
-            }
-            TxType::Transfer(from, to, amount) => {
-                return;
-            }
-        }
-
-        self.block_height = block.block_height;
-        // println!(
-        //     "block_height = {}, old commit = {}, new commit = {}",
-        //     block.block_height, self.commit.commit, block.new_commit.commit
-        // );
-        self.commit = block.new_commit;
-
-        update_proofs::<E>(
-            &self.params.proving_key.update_keys,
-            &self.commit.clone(),
-            &mut self.proofs,
-            &cvalues,
-            n as usize,
-        )
-        .unwrap();
-        // println!("update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
     }
 
     /// if send to L1 failure, revert the block's txs.

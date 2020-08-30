@@ -7,6 +7,7 @@ use core::ops::{Add, Mul, Sub};
 use crate::transaction::{u128_to_fr, Transaction, TxType, ACCOUNT_SIZE};
 use crate::{vec, String, Vec};
 
+#[derive(Clone)]
 pub struct CellUpks<E: PairingEngine> {
     pub vk: VerificationKey<E>,
     pub omega: E::Fr,
