@@ -1,3 +1,5 @@
+
+
 # Clover Protocol, a lightweight zkRollup approach for Nervos/CKB
 
 *SECBIT Labs*
@@ -176,8 +178,8 @@ The solution is, we create a vault cell. Like commitment cell, at each block hei
 
 If a depositor wants to deposit $deposit_ammount$ UDT tokens to a receiver whose index in L2 is $row_receiver$. The depositor creates a transaction which contains three type of input cell:
 
-1. one or more UDT cell which Lock field is secp256k1 with depositor's pk_hash, the summation of data field of these cells is $deposit_amount$
-2. the vault cell, data is $vault_amount$
+1. one or more UDT cell which Lock field is secp256k1 with depositor's pk_hash, the summation of data field of these cells is $deposit\_amount$
+2. the vault cell, data is $vault\_amount$
 3. the commitment cell, data is $c_0$
 
 two types of output cell:
@@ -193,9 +195,9 @@ the witness of this transaction is
 2. some update_commitment_witness，which consists of(but may not limited to):
 
 - $c_1 = VC.UpdateComm(c_0, deposit_ammount, row_user, upk_{row_user})$ 
-- $i = row_user$ 
-- $\delta=deposit_amout$ 
-- $tx_type=deposit$ 
+- $i = row\_user$ 
+- $\delta=deposit\_amout$ 
+- $tx\_type=deposit$ 
 
 The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx_type == deposit$:
 
@@ -217,27 +219,27 @@ Withdraw is very similar to deposit, with minor difference.
 
 If a payee with L2 account index $row_payee$ wants to withdraw $withdraw_ammount$ UDT tokens to a receiver whose pk_hash in L1 is $pk_hash_{receiver}$. The payee creates a transaction which contains two type of input cell:
 
-1. the vault cell, data is $vault_amount$
+1. the vault cell, data is $vault\_amount$
 2. the commitment cell, data is $c_0$
 
 two types of output cell:
 
-1. the vault cell, data is $vault_amount-withdraw_amount$
+1. the vault cell, data is $vault\_amount-withdraw\_amount$
 2. the commitment cell, data is $c_1$
-3. one or more UDT cell which Lock field is secp256k1 with receiver's $pk_hash_{receiver}$, the summation of data field of these cells is $withdraw_amount$
+3. one or more UDT cell which Lock field is secp256k1 with receiver's $pk\_hash\_{receiver}$, the summation of data field of these cells is $withdraw\_amount$
 
 the witness of this transaction is:
 
 1. payee's signature for this tx
 2. some update_commitment_witness，which consists of (but may not limited to):
 
-- $c_1 = VC.UpdateComm(c_0, -withdraw_ammount, row_payee, upk_{row_payee})$ 
+- $c_1 = VC.UpdateComm(c_0, -withdraw\_ammount, row\_payee, upk\_{row\_payee})$ 
 - $i = row_payee$ 
 - $addr||nonce||v$ 
-- $pk_payee$
+- $pk\_payee$
 - $\pi_i$
-- $\delta=-deposit_amout$ 
-- $tx_type=withdraw$ 
+- $\delta=-deposit\_amout$ 
+- $tx\_type=withdraw$ 
 
 The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx_type == withdraw$:
 
@@ -248,7 +250,7 @@ The lock script of vault cell and commitment cell is exactly same (with same cod
 5. $c_1=VC.UpdateComm(c_0, \delta, i, upk_i)$ 
 6. $VC.VerifyPos(vrk,c_0,addr||nonce||v,i,\pi_{i}) = True$
 7. $v>withdraw_amount$
-8. $ addr = H(row_payee||upk_{row_payee}||pk_{payee})$
+8. $ addr = H(row\_payee||upk\_{row\_payee}||pk\_{payee})$
 9. payee's signature plus $pk_payee$ can pass signature verification 
 
 As same as deposit action, a payee can withdraw at any time permissionlessly, as long as payee sychronize the latest valid block.After this transaction is settled on CKB, miners and users can update balance position proof for $\pi_{j}'$ by $\pi_{j}'=VC.UpdatePosProof(\pi_{j}, \delta, j, i, upk_j,upk_i)$
@@ -282,7 +284,7 @@ The Clover protocol relies on aSVC, whose security assumptions rely on a relativ
 
 The Clover protocol relies on the CKB-ZKP library of zero-knowledge proof algorithms, which is currently under development and has not yet met the security requirements of a production environment. It hasn't been audited by any  third-party security teams.
 
-### instantiation
+### Instantiation
 
 The system has some setup parameters and we instantiate with these parameters: 
 
@@ -291,10 +293,6 @@ The system has some setup parameters and we instantiate with these parameters:
 3. (code_hash, OutPoint, args): list of UDT token L2 supports
 4. ellipitic_curve: the elliptic curve used when instantiating groups in vc scheme, default is BN256, BLS12-381
 5. hash_algorithm: hash algorithm, default is MIMC
-
-### test data analysis
-
-todo 没有活来不及做的话就删除本章
 
 ## Implementation 
 
@@ -313,6 +311,22 @@ The following tables show the performance of aSVC library.
 |       8192        |        31 ms        | 2 ms    | 3 ms   |        20 ms        | 7 s    | < 1 ms            | 7ms |
 |      131072       |       360 ms        | 30 ms   | 132 ms |        21 ms        | 117 s  | < 1 ms            | 7ms |
 |      1048576      |        2.2 s        | 330 ms  | 6 ms   |        27 ms        | 976 s      | < 1 ms            | 7ms |
+
+
+The VM execution costs (mcycles = million cycles of CKB-VM):
+
+|     Opt     | Contract Size | Register    | Deposit     |  Withdraw   | Transfer    |
+| :---------: | :-----------: | ----------- | ----------- | :---------: | ----------- |
+| opt-level=z |    103 KB     | 215 mcycles | 310 mcycles | 317 mcycles | 315 mcycles |
+| opt-level=s |    221 KB     | 159 mcycles | 223 mcycles | 228 mcycles | 227 mcycles |
+
+The size of cells:
+
+| Capacity | Cell 1 | Commit Cell             |
+| :------: | :----: | ----------------------- |
+| n = 128  | 41 KB  | 12 KB (tx counts = 90)  |
+| n = 1024 | 332 KB | 25 KB (tx counts = 175) |
+
 
 
 The code of  can be divided into on-chain contract part, off-chain node part and ckb helper module.
