@@ -318,7 +318,7 @@ fn verify(
     change: u128,
     is_add: bool,
 ) -> Result<(), Error> {
-    debug!("change: {}{}", if is_add { "+" } else { "-" }, change);
+    debug!("on-chain udt pool change: {}{}", if is_add { "+" } else { "-" }, change);
 
     pre.remove(0);
     now.remove(0);
@@ -326,32 +326,32 @@ fn verify(
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
 
-    debug!("pre & now block ok");
+    debug!("pre & now block deserialization ok");
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
     }
-    debug!("pre & now block is eq ok");
+    debug!("pre & now block is eq!");
 
     let cell_upks = CellUpks::<Bn_256>::from_bytes(&upk[..]).unwrap();
 
-    let mut udt_change = change as i128;
-    if !is_add {
-        udt_change = -udt_change;
-    }
-
     match now_block.verify(&cell_upks) {
-        Ok(r) => {
-            if r == udt_change {
+        Ok((income, outcome)) => {
+            debug!(
+                "on-chain udt pool change: {}{}, block income: {}, outcome: {}",
+                if is_add { "+" } else { "-" },
+                change,
+                income,
+                outcome
+            );
+            if (is_add && income >= outcome && income - outcome == change)
+                || ((!is_add) && outcome >= income && outcome - income == change)
+            {
                 return Ok(());
             }
-            debug!(
-                "udt amount change mismatched :on chain {}, off chain: {}",
-                udt_change, r
-            );
             return Err(Error::Amount);
         }
         _ => {
-            debug!("verify failure");
+            debug!("block.verify failure");
             return Err(Error::Verify);
         }
     };

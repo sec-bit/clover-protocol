@@ -92,7 +92,12 @@ impl<E: PairingEngine> Block<E> {
         Self::from_bytes(&v[..])
     }
 
-    pub fn verify(&self, cell_upks: &CellUpks<E>) -> Result<i128, String> {
+    /// Traverse the transactions in the block, and examine the validity of each transaction.
+    ///
+    /// If success, returns a tuple containing the (income, outcome) of all the transactions.
+    /// Income only comes from deposit transactions, while outcome only comes from withdraw transactions.
+    /// The income and outcome reflect the capital change of UDT pool.
+    pub fn verify(&self, cell_upks: &CellUpks<E>) -> Result<(u128, u128), String> {
         if cell_upks.upks.len() != ACCOUNT_SIZE {
             return Err(String::from("BLOCK_VERIFY: Upk length"));
         }
@@ -111,157 +116,222 @@ impl<E: PairingEngine> Block<E> {
         // map[point](0: delta, 1: balance_change, 2: Option<proof_param>,
         //            3: current_nonce, 4: origin_balance)
         // the "origin" means the value is to be proved during this verification.
-        let mut table: Vec<(Option<E::Fr>, i128, Option<E::Fr>, u32, u128)> =
-            vec![(None, 0, None, 0, 0); ACCOUNT_SIZE];
-        // aggregate the overall capital changing of the block
+        #[derive(Clone)]
+        pub struct Tmp<E: PairingEngine> {
+            /// commit variation through transactions, additive
+            pub delta: Option<E::Fr>,
+            pub income: u128,
+            pub outcome: u128,
+            /// original point value for proving, only calculated once.
+            pub point_value: Option<E::Fr>,
+            /// nonce of the current transaction.
+            pub cur_nonce: u32,
+            /// original balance for proving.
+            pub balance: u128,
+        }
+        let mut table: Vec<Tmp<E>> = vec![
+            Tmp {
+                delta: None,
+                income: 0,
+                outcome: 0,
+                point_value: None,
+                cur_nonce: 0,
+                balance: 0
+            };
+            ACCOUNT_SIZE
+        ];
 
         let mul160: E::Fr = E::Fr::from(2).pow(&[160]);
         let mul128: E::Fr = E::Fr::from(2).pow(&[128]);
 
-        let mut overall_change: i128 = 0;
+        // aggregate the overall capital changing of the block
+        // let mut overall_change: i128 = 0;
+        let mut incomes = 0_u128;
+        let mut outcomes = 0_u128;
 
+        #[cfg(feature = "std")]
+        println!("starting dark magic...(off-chain block.verify)");
         for tx in &self.txs {
             match tx.tx_type {
                 // A block submitted by user only contains Deposit and Withdraw transactions.
                 TxType::Deposit(to, amount) => {
-                    overall_change += amount as i128;
+                    incomes += amount;
 
-                    match table[to as usize].0 {
+                    match table[to as usize].delta {
                         None => {
                             points2prove.push(to);
-                            table[to as usize] = (
-                                Some(E::Fr::zero().add(&u128_to_fr::<E>(amount))),
-                                amount as i128,
-                                Some(tx.point_value()),
-                                tx.nonce,
-                                tx.balance,
-                            );
+                            table[to as usize] = Tmp {
+                                delta: Some(E::Fr::zero().add(&u128_to_fr::<E>(amount))),
+                                income: amount,
+                                outcome: 0,
+                                point_value: Some(tx.point_value()),
+                                cur_nonce: tx.nonce,
+                                balance: tx.balance,
+                            };
+
+                            #[cfg(feature = "std")]
+                            println!("{} deposit for the 1st time!", to);
                         }
-                        Some(_) => {
-                            table[to as usize].0 =
-                                Some(table[to as usize].0.unwrap().add(&u128_to_fr::<E>(amount)));
-                            table[to as usize].1 += amount as i128;
+                        Some(prev_delta) => {
+                            table[to as usize].delta =
+                                Some(prev_delta.add(&u128_to_fr::<E>(amount)));
+                            table[to as usize].income += amount;
+
+                            #[cfg(feature = "std")]
+                            println!("{} deposit again!", to);
                         }
                     }
                 }
                 TxType::Withdraw(from, amount) => {
-                    overall_change -= amount as i128;
+                    outcomes += amount;
 
-                    match table[from as usize].0 {
+                    match table[from as usize].delta {
                         None => {
                             points2prove.push(from);
-                            table[from as usize] = (
-                                Some(E::Fr::zero().sub(&u128_to_fr::<E>(amount))),
-                                -(amount as i128),
-                                Some(tx.point_value()),
-                                tx.nonce,
-                                tx.balance,
-                            )
+                            table[from as usize] = Tmp {
+                                delta: Some(E::Fr::zero().sub(&u128_to_fr::<E>(amount))),
+                                income: 0,
+                                outcome: amount,
+                                point_value: Some(tx.point_value()),
+                                cur_nonce: tx.nonce,
+                                balance: tx.balance,
+                            };
+                            #[cfg(feature = "std")]
+                            println!("{} withdraw for the 1st time!", from);
                         }
-                        Some(_) => {
-                            table[from as usize].0 = Some(
-                                table[from as usize]
-                                    .0
-                                    .unwrap()
-                                    .sub(&u128_to_fr::<E>(amount)),
-                            );
-                            table[from as usize].1 -= amount as i128;
+                        Some(prev_delta) => {
+                            table[from as usize].delta =
+                                Some(prev_delta.sub(&u128_to_fr::<E>(amount)));
+                            table[from as usize].outcome += amount;
+
+                            #[cfg(feature = "std")]
+                            println!("{} withdraw again!", from);
                         }
                     }
                     // balance sufficiency check
-                    if table[from as usize].1 < 0 {
-                        if table[from as usize].4 < (-table[from as usize].1 as u128) {
-                            return Err(String::from("BLOCK_VERIFY: balance check failure"));
-                        }
+                    if let None = (table[from as usize].balance + table[from as usize].income)
+                        .checked_sub(table[from as usize].outcome)
+                    {
+                        return Err(String::from("BLOCK_VERIFY: balance invalid"));
                     }
                 }
                 // A block submitted by L2 service only contains Transfer and Register transactions.
                 TxType::Transfer(from, to, amount) => {
-                    match table[from as usize].0 {
+                    match table[from as usize].delta {
                         None => {
                             points2prove.push(from);
-                            table[from as usize] = (
-                                Some(mul128.sub(&u128_to_fr::<E>(amount))),
-                                -(amount as i128),
-                                Some(tx.point_value()),
-                                tx.nonce,
-                                tx.balance,
-                            );
+                            table[from as usize] = Tmp {
+                                delta: Some(mul128.sub(&u128_to_fr::<E>(amount))),
+                                income: 0,
+                                outcome: amount,
+                                point_value: Some(tx.point_value()),
+                                cur_nonce: tx.nonce,
+                                balance: tx.balance,
+                            };
+
+                            #[cfg(feature = "std")]
+                            println!("{} transfer-from for the 1st time!", from);
                         }
-                        Some(_) => match table[from as usize].2 {
+                        Some(prev_delta) => match table[from as usize].point_value {
                             None => {
                                 points2prove.push(from);
-                                table[from as usize] = (
-                                    Some(
-                                        table[from as usize]
-                                            .0
-                                            .unwrap()
-                                            .add(&mul128)
-                                            .sub(&u128_to_fr::<E>(amount)),
+                                table[from as usize] = Tmp {
+                                    delta: Some(
+                                        prev_delta.add(&mul128).sub(&u128_to_fr::<E>(amount)),
                                     ),
-                                    table[from as usize].1 - (amount as i128),
-                                    Some(tx.point_value()),
-                                    tx.nonce,
-                                    tx.balance,
+                                    income: table[from as usize].income,
+                                    outcome: table[from as usize].outcome + amount,
+                                    point_value: Some(tx.point_value()),
+                                    cur_nonce: tx.nonce,
+                                    balance: tx.balance,
+                                };
+
+                                #[cfg(feature = "std")]
+                                println!(
+                                    "{} has presented but transfer-from for the 1st time!",
+                                    from
                                 );
                             }
                             Some(_) => {
-                                if tx.nonce - table[from as usize].3 != 1 {
+                                if tx.nonce - table[from as usize].cur_nonce != 1 {
                                     return Err(String::from("BLOCK_VERIFY: nonce invalid"));
                                 }
-                                table[from as usize].0 = Some(
+                                table[from as usize].delta = Some(
                                     table[from as usize]
-                                        .0
+                                        .delta
                                         .unwrap()
                                         .add(&mul128)
                                         .sub(&u128_to_fr::<E>(amount)),
                                 );
-                                table[from as usize].1 -= amount as i128;
-                                table[from as usize].3 = tx.nonce;
+                                table[from as usize].outcome += amount;
+                                table[from as usize].cur_nonce = tx.nonce;
+
+                                #[cfg(feature = "std")]
+                                println!("{} has presented and transfer-from again!", from);
                             }
                         },
                     }
-                    // balance sufficiency check
-                    if table[from as usize].1 < 0 {
-                        if table[from as usize].4 < (-table[from as usize].1 as u128) {
-                            return Err(String::from("BLOCK_VERIFY: balance invalid"));
-                        }
+                    // transfer-from balance sufficiency check
+                    if let None = (table[from as usize].balance + table[from as usize].income)
+                        .checked_sub(table[from as usize].outcome)
+                    {
+                        return Err(String::from("BLOCK_VERIFY: balance invalid"));
                     }
-                    match table[to as usize].0 {
+
+                    match table[to as usize].delta {
                         None => {
                             // In a Transfer, the nonce of transfer-to account remains unchanged.
-                            table[to as usize] =
-                                (Some(u128_to_fr::<E>(amount)), amount as i128, None, 0, 0);
+                            table[to as usize] = Tmp {
+                                delta: Some(u128_to_fr::<E>(amount)),
+                                income: amount,
+                                outcome: 0,
+                                point_value: None,
+                                cur_nonce: 0,
+                                balance: 0,
+                            };
+
+                            #[cfg(feature = "std")]
+                            println!("{} transfer-to for the 1st time!", to);
                         }
-                        Some(_) => {
-                            table[to as usize].0 =
-                                Some(table[to as usize].0.unwrap().add(&u128_to_fr::<E>(amount)));
-                            table[to as usize].1 += amount as i128;
+                        Some(prev_delta) => {
+                            table[to as usize].delta =
+                                Some(prev_delta.add(&u128_to_fr::<E>(amount)));
+                            table[to as usize].income += amount;
+
+                            #[cfg(feature = "std")]
+                            println!("{} has presented and transfer-to again!", to);
                         }
                     }
                 }
                 TxType::Register(to) => {
                     // A user must be registered to got paid.
                     // So the Registration should happen on a new user.
-                    table[to as usize] = (
-                        Some(tx.addr.mul(&mul160).add(&mul128)),
-                        0,
-                        Some(tx.point_value()),
-                        tx.nonce,
-                        tx.balance,
-                    );
+                    table[to as usize] = Tmp {
+                        delta: Some(tx.addr.mul(&mul160).add(&mul128)),
+                        income: 0,
+                        outcome: 0,
+                        point_value: Some(tx.point_value()),
+                        cur_nonce: tx.nonce,
+                        balance: tx.balance,
+                    };
+
+                    #[cfg(feature = "std")]
+                    println!("{} register for the 1st time!", to);
                 }
             }
         }
+
+        #[cfg(feature = "std")]
+        println!("ending dark magic...(off-chain block.verify)");
 
         let mut point_values = Vec::new();
         let mut tmp_commit = self.commit.clone();
 
         for point in &points2prove {
-            point_values.push(table[*point as usize].2.unwrap());
+            point_values.push(table[*point as usize].point_value.unwrap());
             tmp_commit = update_commit(
                 &tmp_commit,
-                table[*point as usize].0.unwrap(),
+                table[*point as usize].delta.unwrap(),
                 *point as u32,
                 &cell_upks.upks[*point as usize],
                 cell_upks.omega,
@@ -280,6 +350,6 @@ impl<E: PairingEngine> Block<E> {
         )
         .map_err(|_| String::from("BLOCK_VERIFY: verify pos failure!"))?;
 
-        Ok(overall_change)
+        Ok((incomes, outcomes))
     }
 }
