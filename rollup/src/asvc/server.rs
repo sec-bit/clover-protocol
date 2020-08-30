@@ -171,8 +171,6 @@ async fn deposit<E: PairingEngine>(
 
     let read_storage = req.state().read().await;
 
-    println!("NOW {:?}", read_storage.next_user);
-
     if !read_storage.contains_users(&[from]) {
         return Err(Error::from_str(
             StatusCode::BadRequest,
@@ -187,9 +185,10 @@ async fn deposit<E: PairingEngine>(
     let mut write_storage = req.state().write().await;
 
     if let Some(block) = write_storage.build_block_by_user(tx) {
-        block
-            .verify(&write_storage.cell_upks)
-            .expect("WITHDRAW BLOCK VERIFY FAILURE");
+        let res = block.verify(&write_storage.cell_upks);
+        //.expect("DEPOSIT BLOCK VERIFY FAILURE");
+
+        println!("=========BLOCK DEPOSIT: {:?}", res);
 
         let rollup_hash: &String = &write_storage.rollup_lock;
         let rollup_dep_hash: &String = &write_storage.rollup_dep;

@@ -229,9 +229,10 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut new_commit = self.commit.clone();
 
-        let mut proofs: Vec<Proof<E>> = vec![];
-        let mut froms: Vec<u32> = vec![];
+        let mut froms = IndexMap::new();
         let mut txlist: Vec<Transaction<E>> = vec![];
+
+        println!("START BUILD BLOCK.... txs: {}", txs.len());
 
         loop {
             if txs.len() == 0 {
@@ -266,8 +267,9 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .expect("UPDATE TRANSFER TO COMMIT FAILURE");
 
-                    froms.push(tx.from());
-                    proofs.push(tx.proof.clone());
+                    if !froms.contains_key(&tx.from()) {
+                        froms.insert(tx.from(), tx.proof.clone());
+                    }
                 }
                 TxType::Register(account) => {
                     new_commit = update_commit::<E>(
@@ -280,8 +282,9 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .expect("UPDATE REGISTER COMMIT FAILURE");
 
-                    froms.push(tx.from());
-                    proofs.push(tx.proof.clone());
+                    if !froms.contains_key(&tx.from()) {
+                        froms.insert(tx.from(), tx.proof.clone());
+                    }
                 }
                 TxType::Deposit(..) => {
                     panic!("NOOOOOP");
@@ -294,7 +297,12 @@ impl<E: PairingEngine> Storage<E> {
             txlist.push(tx);
         }
 
-        let proof = aggregate_proofs::<E>(froms, proofs, omega).expect("AGGREGATE ERROR");
+        let proof = aggregate_proofs::<E>(
+            froms.keys().map(|v| *v).collect(),
+            froms.values().map(|v| v.clone()).collect(),
+            omega,
+        )
+        .expect("AGGREGATE ERROR");
 
         let block = Block {
             proof,
@@ -327,7 +335,7 @@ impl<E: PairingEngine> Storage<E> {
                     omega,
                     n,
                 )
-                .unwrap();
+                .expect("UPDATE COMMIT DEPOSIT FAILURE");
             }
             TxType::Withdraw(from, _amount) => {
                 new_commit = update_commit::<E>(
@@ -338,7 +346,7 @@ impl<E: PairingEngine> Storage<E> {
                     omega,
                     n,
                 )
-                .unwrap();
+                .expect("UPDATE COMMIT DEPOSIT FAILURE");
             }
         }
 
