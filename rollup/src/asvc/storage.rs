@@ -380,11 +380,6 @@ impl<E: PairingEngine> Storage<E> {
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;
-        println!(
-            "HANDLE BLOCK: block_height = {}, old commit = {}, new commit = {}",
-            block.block_height, self.commit.commit, block.new_commit.commit
-        );
-
         let mut cvalues = HashMap::new();
 
         // 1. update balance & fpk
@@ -411,8 +406,8 @@ impl<E: PairingEngine> Storage<E> {
                         .or_insert(delta);
                 }
                 TxType::Transfer(from, to, amount) => {
-                    self.balances[from as usize] += amount;
-                    self.balances[to as usize] -= amount;
+                    self.balances[from as usize] -= amount;
+                    self.balances[to as usize] += amount;
 
                     let (from_delta, to_delta) = tx.delta_value();
 
