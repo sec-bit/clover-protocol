@@ -7,7 +7,7 @@ extern crate alloc;
 use alloc::{string::String, vec, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::{format, string::String, vec::Vec};
+use std::{string::String, vec, vec::Vec};
 
 pub mod block;
 pub mod transaction;

@@ -6,6 +6,7 @@ use ckb_zkp::{
     },
     scheme::asvc::{Proof, UpdateKey},
 };
+use sha2::{Digest, Sha256};
 
 use crate::{String, Vec};
 
@@ -64,7 +65,9 @@ impl<E: PairingEngine> FullPubKey<E> {
         self.update_key.ui.write(&mut bytes).unwrap();
         self.tradition_pubkey.0.write(&mut bytes).unwrap();
 
-        mimc::hash(&bytes)
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        mimc::hash(&hasher.finalize()[..])
     }
 }
 
@@ -152,13 +155,10 @@ impl<E: PairingEngine> Transaction<E> {
         self.from().write(&mut bytes).unwrap();
         self.addr.write(&mut bytes).unwrap();
         self.nonce.write(&mut bytes).unwrap();
-        let fr: E::Fr = mimc::hash(&bytes);
 
-        let mut new_bytes = Vec::new();
-
-        fr.write(&mut new_bytes).unwrap();
-
-        new_bytes
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        hasher.finalize().to_vec()
     }
 
     pub fn from(&self) -> u32 {

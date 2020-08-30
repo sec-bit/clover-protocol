@@ -326,9 +326,11 @@ fn verify(
     let pre_block = Block::<Bn_256>::from_bytes(&pre[..]).unwrap();
     let now_block = Block::<Bn_256>::from_bytes(&now[..]).unwrap();
 
+    debug!("pre & now block ok");
     if pre_block.new_commit != now_block.commit {
         return Err(Error::Verify);
     }
+    debug!("pre & now block is eq ok");
 
     let cell_upks = CellUpks::<Bn_256>::from_bytes(&upk[..]).unwrap();
 
@@ -349,6 +351,7 @@ fn verify(
             return Err(Error::Amount);
         }
         _ => {
+            debug!("verify failure");
             return Err(Error::Verify);
         }
     };

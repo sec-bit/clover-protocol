@@ -90,7 +90,7 @@ async fn miner<E: PairingEngine>(storage: Arc<RwLock<Storage<E>>>) -> Result<(),
         let mut write_storage = storage.write().await;
 
         if let Some(block) = write_storage.create_block() {
-            println!("SUCCESS MINER A BLOCK");
+            println!("SUCCESS MINER A BLOCK tx is: {}", block.txs.len());
 
             let verify_res = block.verify(&cell_upks);
             println!("Block verify is: {:?}", verify_res);
@@ -396,12 +396,8 @@ async fn transfer<E: PairingEngine>(
     let proof = read_storage.user_proof(from);
 
     println!(
-        "transfer balance: balance:{}, from: {}, to: {}, amount {}",
-        balance,
-        from,
-        to,
-        // read_storage.user_balance(to),
-        amount,
+        "transfer balance: balance:{}, from: {}, to: {}, amount {}, nonce: {}",
+        balance, from, to, amount, nonce,
     );
 
     if amount > balance {

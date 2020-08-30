@@ -10,3 +10,8 @@ ckb-zkp = { git = "https://github.com/sec-bit/ckb-zkp", branch = "develop-asvc",
     "asvc"
 ] }
 hex = { version = "0.4", default-features = false }
+sha2 = { version = "0.9", default-features = false }
+
+[features]
+default = ["std"]
+std = []

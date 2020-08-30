@@ -120,6 +120,7 @@ version = "0.1.0"
 dependencies = [
  "ckb-zkp",
  "hex",
+ "sha2 0.9.1",
 ]
 
 [[package]]
