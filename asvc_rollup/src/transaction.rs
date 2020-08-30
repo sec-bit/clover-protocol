@@ -2,7 +2,7 @@ use ckb_zkp::{
     gadgets::mimc,
     math::{
         io::Result as IoResult, serialize::*, BigInteger, Field, FromBytes, PairingEngine,
-        PrimeField, ToBytes,
+        PrimeField, ToBytes, Zero,
     },
     scheme::asvc::{Proof, UpdateKey},
 };
@@ -176,7 +176,7 @@ impl<E: PairingEngine> Transaction<E> {
         let mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
 
         match self.tx_type {
-            TxType::Deposit(..) | TxType::Deposit(..) => {
+            TxType::Deposit(..) | TxType::Withdraw(..) => {
                 self.addr * &mul_160
                     + &(mul_128 * &u32_to_fr::<E>(self.nonce))
                     + &u128_to_fr::<E>(self.balance)
@@ -188,8 +188,8 @@ impl<E: PairingEngine> Transaction<E> {
             }
             TxType::Register(..) => {
                 E::Fr::zero()
-                    + E::Fr::zero()
-                    + E::Fr::zero()
+                    + &E::Fr::zero()
+                    + &E::Fr::zero()
             }
         }
     }

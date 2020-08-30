@@ -4,7 +4,7 @@ use ckb_zkp::scheme::asvc::{
 };
 use core::ops::{Add, Mul, Sub};
 
-use crate::transaction::{u128_to_fr, u32_to_fr, Transaction, TxType, ACCOUNT_SIZE};
+use crate::transaction::{u128_to_fr, Transaction, TxType, ACCOUNT_SIZE};
 use crate::{vec, String, Vec};
 
 pub struct CellUpks<E: PairingEngine> {
@@ -115,6 +115,9 @@ impl<E: PairingEngine> Block<E> {
             vec![(None, 0, None, 0, 0); ACCOUNT_SIZE];
         // aggregate the overall capital changing of the block
 
+        let mul160: E::Fr = E::Fr::from(2).pow(&[160]);
+        let mul128: E::Fr = E::Fr::from(2).pow(&[128]);
+
         let mut overall_change: i128 = 0;
 
         for tx in &self.txs {
@@ -178,7 +181,7 @@ impl<E: PairingEngine> Block<E> {
                         None => {
                             points2prove.push(from);
                             table[from as usize] = (
-                                Some(MUL128.sub(&u128_to_fr::<E>(amount))),
+                                Some(mul128.sub(&u128_to_fr::<E>(amount))),
                                 -(amount as i128),
                                 Some(tx.point_value()),
                                 tx.nonce,
@@ -193,7 +196,7 @@ impl<E: PairingEngine> Block<E> {
                                         table[from as usize]
                                             .0
                                             .unwrap()
-                                            .add(&MUL128)
+                                            .add(&mul128)
                                             .sub(&u128_to_fr::<E>(amount)),
                                     ),
                                     table[from as usize].1 - (amount as i128),
@@ -210,7 +213,7 @@ impl<E: PairingEngine> Block<E> {
                                     table[from as usize]
                                         .0
                                         .unwrap()
-                                        .add(&MUL128)
+                                        .add(&mul128)
                                         .sub(&u128_to_fr::<E>(amount)),
                                 );
                                 table[from as usize].1 -= amount as i128;
@@ -241,7 +244,7 @@ impl<E: PairingEngine> Block<E> {
                     // A user must be registered to got paid.
                     // So the Registration should happen on a new user.
                     table[to as usize] = (
-                        Some(tx.addr.mul(&MUL160).add(&MUL128)),
+                        Some(tx.addr.mul(&mul160).add(&mul128)),
                         0,
                         Some(tx.point_value()),
                         tx.nonce,
