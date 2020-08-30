@@ -146,7 +146,7 @@ impl<E: PairingEngine> Storage<E> {
         if !self.pools.contains_key(&tx_hash) {
             match tx.tx_type {
                 TxType::Transfer(from, ..) | TxType::Register(from) => {
-                    self.tmp_nonces[from as usize] += 1;
+                    // self.tmp_nonces[from as usize] += 1;
                 }
                 TxType::Deposit(_to, _amount) => {
                     // not handle deposit
@@ -200,12 +200,12 @@ impl<E: PairingEngine> Storage<E> {
 
             match tx.tx_type {
                 TxType::Transfer(from, to, amount) => {
-                    println!(
-                        "[build_block] - [transfer]: start...from={}, to={}, amount={}, balance={}",
-                        from, to, amount, tx.balance
-                    );
+                    // println!(
+                    //     "[build_block] - [transfer]: start...from={}, to={}, amount={}, balance={}",
+                    //     from, to, amount, tx.balance
+                    // );
                     tx.balance = self.balances[from as usize];
-                    println!("[build_block] - [transfer]: start...balance={}", tx.balance);
+                    // println!("[build_block] - [transfer]: start...balance={}", tx.balance);
 
                     tx.proof = self.proofs[from as usize].clone();
                     let amount_fr: E::Fr = u128_to_fr::<E>(amount);
@@ -218,7 +218,7 @@ impl<E: PairingEngine> Storage<E> {
                             if amount as i128 > tx.balance as i128 + balance_change {
                                 continue;
                             }
-                            println!("[build_block] - [transfer] contains key...nonce=0, nonce={}, last nonce={}", tx.nonce, self.nonces[from as usize]);
+                            // println!("[build_block] - [transfer] contains key...nonce=0, nonce={}, last nonce={}", tx.nonce, self.nonces[from as usize]);
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
                             origin_proof_params += &(E::Fr::from_repr(
@@ -243,7 +243,7 @@ impl<E: PairingEngine> Storage<E> {
                             } else {
                                 continue;
                             }
-                            println!("[build_block] verify success...");
+                            // println!("[build_block] verify success...");
 
                             froms.push(tx.from());
                             proofs.push(tx.proof.clone());
@@ -276,10 +276,10 @@ impl<E: PairingEngine> Storage<E> {
                             );
                         }
                     } else {
-                        println!(
-                            "[build_block] - [transfer]: no contains_key...amount={}, balance={}",
-                            amount, tx.balance
-                        );
+                        // println!(
+                        //     "[build_block] - [transfer]: no contains_key...amount={}, balance={}",
+                        //     amount, tx.balance
+                        // );
                         if amount > tx.balance {
                             continue;
                         }
@@ -292,7 +292,7 @@ impl<E: PairingEngine> Storage<E> {
                             <E::Fr as PrimeField>::BigInt::from_u128(tx.balance),
                         ));
 
-                        println!("[build_block] - [transfer]: no contains_key...origin_proof_params={}, tx.nonce={}, tx.balance={}", origin_proof_params, tx.nonce, tx.balance);
+                        // println!("[build_block] - [transfer]: no contains_key...origin_proof_params={}, tx.nonce={}, tx.balance={}", origin_proof_params, tx.nonce, tx.balance);
                         if let Ok(res) = verify_pos::<E>(
                             &self.params.verification_key,
                             &self.commit,
@@ -324,7 +324,7 @@ impl<E: PairingEngine> Storage<E> {
                             ),
                         );
                     }
-                    println!("[build_block] start update commit...old commit={}, amount_fr={}, from={}",new_commit.clone().commit, amount_fr, from);
+                    // println!("[build_block] start update commit...old commit={}, amount_fr={}, from={}",new_commit.clone().commit, amount_fr, from);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         amount_fr.neg().add(&nonce_offest_fr),
@@ -335,7 +335,7 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .unwrap();
 
-                    println!("[build_block] start handle to account...");
+                    // println!("[build_block] start handle to account...");
 
                     if point_state.contains_key(&to) {
                         let (addr, nonce, balance, next_nonce, balance_change) = point_state[&to];
@@ -353,7 +353,7 @@ impl<E: PairingEngine> Storage<E> {
                         point_state.insert(to, (E::Fr::zero(), 0, 0, 0, amount as i128));
                     }
 
-                    println!("[build_block] start update commit...old commit={}, amount_fr={}, to={}",new_commit.clone().commit, amount_fr, to);
+                    // println!("[build_block] start update commit...old commit={}, amount_fr={}, to={}",new_commit.clone().commit, amount_fr, to);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         amount_fr,
@@ -407,7 +407,7 @@ impl<E: PairingEngine> Storage<E> {
 
                     point_state.insert(account, (tx.addr, 0, 0, 1, 0));
 
-                    println!("[build_block] start update commit...old commit={}, account={}",new_commit.clone().commit, account);
+                    // println!("[build_block] start update commit...old commit={}, account={}",new_commit.clone().commit, account);
                     new_commit = update_commit::<E>(
                         &new_commit,
                         origin_proof_params,
@@ -563,7 +563,7 @@ impl<E: PairingEngine> Storage<E> {
         let mut storage = self.tmp_storages[&block.block_height].clone();
         let mut cvalues = HashMap::<u32, E::Fr>::new();
         for (account, balance) in storage.balances.drain() {
-            println!("account={}， balance={}, self.balances[account as usize]={}", account, balance, self.balances[account as usize]);
+            // println!("account={}， balance={}, self.balances[account as usize]={}", account, balance, self.balances[account as usize]);
         
             if  balance >= self.balances[account as usize]{
                 let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
@@ -629,7 +629,7 @@ impl<E: PairingEngine> Storage<E> {
             n as usize,
         )
         .unwrap();
-        println!("[handle_block]update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
+        // println!("[handle_block]update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
 
         self.block_height = block.block_height;
         let mut removes = Vec::new();
@@ -698,10 +698,10 @@ impl<E: PairingEngine> Storage<E> {
         }
 
         self.block_height = block.block_height;
-        println!(
-            "block_height = {}, old commit = {}, new commit = {}",
-            block.block_height, self.commit.commit, block.new_commit.commit
-        );
+        // println!(
+        //     "block_height = {}, old commit = {}, new commit = {}",
+        //     block.block_height, self.commit.commit, block.new_commit.commit
+        // );
         self.commit = block.new_commit;
 
         update_proofs::<E>(
@@ -712,7 +712,7 @@ impl<E: PairingEngine> Storage<E> {
             n as usize,
         )
         .unwrap();
-        println!("update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
+        // println!("update proof----block height={}, proof[0]={}, commit={}", block.block_height, self.proofs[0].w, self.commit.commit);
     }
 
     /// if send to L1 failure, revert the block's txs.
