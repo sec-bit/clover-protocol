@@ -220,19 +220,10 @@ impl<E: PairingEngine> Storage<E> {
                             }
                             // println!("[build_block] - [transfer] contains key...nonce=0, nonce={}, last nonce={}", tx.nonce, self.nonces[from as usize]);
 
-                            let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                            origin_proof_params += &(E::Fr::from_repr(
-                                <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                            )
-                            .mul(&E::Fr::from(2).pow(&[128])));
-                            origin_proof_params += &(E::Fr::from_repr(
-                                <E::Fr as PrimeField>::BigInt::from_u128(tx.balance),
-                            ));
-
                             if let Ok(res) = verify_pos::<E>(
                                 &self.params.verification_key,
                                 &self.commit,
-                                vec![origin_proof_params],
+                                vec![tx.point_value()],
                                 vec![from],
                                 &tx.proof,
                                 omega,
@@ -283,20 +274,12 @@ impl<E: PairingEngine> Storage<E> {
                         if amount > tx.balance {
                             continue;
                         }
-                        let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                        origin_proof_params += &(E::Fr::from_repr(
-                            <E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1),
-                        )
-                        .mul(&E::Fr::from(2).pow(&[128])));
-                        origin_proof_params += &(E::Fr::from_repr(
-                            <E::Fr as PrimeField>::BigInt::from_u128(tx.balance),
-                        ));
 
                         // println!("[build_block] - [transfer]: no contains_key...origin_proof_params={}, tx.nonce={}, tx.balance={}", origin_proof_params, tx.nonce, tx.balance);
                         if let Ok(res) = verify_pos::<E>(
                             &self.params.verification_key,
                             &self.commit,
-                            vec![origin_proof_params],
+                            vec![tx.point_value()],
                             vec![from],
                             &tx.proof,
                             omega,
@@ -486,12 +469,6 @@ impl<E: PairingEngine> Storage<E> {
             TxType::Withdraw(from, amount) => {
                 tx.balance = self.balances[from as usize];
                 tx.proof = self.proofs[from as usize].clone();
-                let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
-                origin_proof_params +=
-                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from(tx.nonce as u64 - 1))
-                        .mul(&E::Fr::from(2).pow(&[128])));
-                origin_proof_params +=
-                    &(E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(tx.balance)));
 
                 let from_upk = &self.params.proving_key.update_keys[from as usize];
                 let amount_fr: E::Fr = u128_to_fr::<E>(amount);
@@ -499,7 +476,7 @@ impl<E: PairingEngine> Storage<E> {
                 if let Ok(res) = verify_pos::<E>(
                     &self.params.verification_key,
                     &self.commit,
-                    vec![origin_proof_params],
+                    vec![tx.point_value()],
                     vec![from],
                     &tx.proof,
                     omega,
