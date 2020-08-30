@@ -6,7 +6,7 @@ An aSVC based stateless protocol as L2 rollup on [Nervos CKB](https://www.nervos
 
 ## About Clover Protocol
 
-[Whitepaper](./clover-protocol.md)
+Whitepaper ([PDF](./clover-protocol.pdf) | [Markdown](./clover-protocol.md))
 
 ## Play With it
 
@@ -14,7 +14,7 @@ An aSVC based stateless protocol as L2 rollup on [Nervos CKB](https://www.nervos
 
 1. compile contract
 
-```
+```sh
 capsule build --release
 ```
 
