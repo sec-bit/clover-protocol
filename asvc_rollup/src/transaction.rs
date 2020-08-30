@@ -1,8 +1,8 @@
 use ckb_zkp::{
     gadgets::mimc,
     math::{
-        io::Result as IoResult, serialize::*, BigInteger, FromBytes, PairingEngine, PrimeField,
-        ToBytes,
+        io::Result as IoResult, serialize::*, BigInteger, Field, FromBytes, PairingEngine,
+        PrimeField, ToBytes,
     },
     scheme::asvc::{Proof, UpdateKey},
 };
@@ -167,6 +167,30 @@ impl<E: PairingEngine> Transaction<E> {
             | TxType::Withdraw(from, ..)
             | TxType::Transfer(from, ..)
             | TxType::Register(from, ..) => from,
+        }
+    }
+
+    #[rustfmt::skip]
+    pub fn point_value(&self) -> E::Fr {
+        let mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
+        let mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
+
+        match self.tx_type {
+            TxType::Deposit(..) | TxType::Deposit(..) => {
+                self.addr * &mul_160
+                    + &(mul_128 * &u32_to_fr::<E>(self.nonce))
+                    + &u128_to_fr::<E>(self.balance)
+            }
+            TxType::Transfer(..) => {
+                self.addr * &mul_160
+                    + &(mul_128 * &u32_to_fr::<E>(self.nonce - 1))
+                    + &u128_to_fr::<E>(self.balance)
+            }
+            TxType::Register(..) => {
+                E::Fr::zero()
+                    + E::Fr::zero()
+                    + E::Fr::zero()
+            }
         }
     }
 

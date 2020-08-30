@@ -114,29 +114,22 @@ impl<E: PairingEngine> Block<E> {
         let mut table: Vec<(Option<E::Fr>, i128, Option<E::Fr>, u32, u128)> =
             vec![(None, 0, None, 0, 0); ACCOUNT_SIZE];
         // aggregate the overall capital changing of the block
-        #[allow(non_snake_case)]
-        let MUL160: E::Fr = E::Fr::from(2).pow(&[160]);
-        #[allow(non_snake_case)]
-        let MUL128: E::Fr = E::Fr::from(2).pow(&[128]);
+
         let mut overall_change: i128 = 0;
 
         for tx in &self.txs {
             match tx.tx_type {
                 // A block submitted by user only contains Deposit and Withdraw transactions.
                 TxType::Deposit(to, amount) => {
-                    points2prove.push(to);
                     overall_change += amount as i128;
+
                     match table[to as usize].0 {
                         None => {
+                            points2prove.push(to);
                             table[to as usize] = (
                                 Some(E::Fr::zero().add(&u128_to_fr::<E>(amount))),
                                 amount as i128,
-                                Some(
-                                    tx.addr
-                                        .mul(&MUL160)
-                                        .add(&(MUL128.mul(&u32_to_fr::<E>(tx.nonce))))
-                                        .add(&u128_to_fr::<E>(tx.balance)),
-                                ),
+                                Some(tx.point_value()),
                                 tx.nonce,
                                 tx.balance,
                             );
@@ -150,18 +143,14 @@ impl<E: PairingEngine> Block<E> {
                 }
                 TxType::Withdraw(from, amount) => {
                     overall_change -= amount as i128;
+
                     match table[from as usize].0 {
                         None => {
                             points2prove.push(from);
                             table[from as usize] = (
                                 Some(E::Fr::zero().sub(&u128_to_fr::<E>(amount))),
                                 -(amount as i128),
-                                Some(
-                                    tx.addr
-                                        .mul(&MUL160)
-                                        .add(&MUL128)
-                                        .add(&u128_to_fr::<E>(tx.balance)),
-                                ),
+                                Some(tx.point_value()),
                                 tx.nonce,
                                 tx.balance,
                             )
@@ -191,12 +180,7 @@ impl<E: PairingEngine> Block<E> {
                             table[from as usize] = (
                                 Some(MUL128.sub(&u128_to_fr::<E>(amount))),
                                 -(amount as i128),
-                                Some(
-                                    tx.addr
-                                        .mul(&MUL160)
-                                        .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1)))
-                                        .add(&u128_to_fr::<E>(tx.balance)),
-                                ),
+                                Some(tx.point_value()),
                                 tx.nonce,
                                 tx.balance,
                             );
@@ -213,12 +197,7 @@ impl<E: PairingEngine> Block<E> {
                                             .sub(&u128_to_fr::<E>(amount)),
                                     ),
                                     table[from as usize].1 - (amount as i128),
-                                    Some(
-                                        tx.addr
-                                            .mul(&MUL160)
-                                            .add(&MUL128.mul(&u32_to_fr::<E>(tx.nonce - 1)))
-                                            .add(&u128_to_fr::<E>(tx.balance)),
-                                    ),
+                                    Some(tx.point_value()),
                                     tx.nonce,
                                     tx.balance,
                                 );
@@ -264,11 +243,7 @@ impl<E: PairingEngine> Block<E> {
                     table[to as usize] = (
                         Some(tx.addr.mul(&MUL160).add(&MUL128)),
                         0,
-                        Some(
-                            E::Fr::zero()
-                                .add(&u128_to_fr::<E>(tx.balance))
-                                .add(&MUL128.mul(&u32_to_fr::<E>(0))), // tx.nonce - 1
-                        ),
+                        Some(tx.point_value()),
                         tx.nonce,
                         tx.balance,
                     );
@@ -276,164 +251,9 @@ impl<E: PairingEngine> Block<E> {
             }
         }
 
-        // previous version
-        {
-            // for tx in &self.txs {
-            //     // A block submitted by user only contains Deposit and Withdraw transactions.
-            //     match tx.tx_type {
-            //         TxType::Deposit(to, amount) => {
-            //             overall_change += amount as i128;
-
-            //             if mapping[to as usize] == 0 {
-            //                 // user "to" is not recorded.
-            //                 points2prove.push(ptr as u32);
-            //                 mapping[to as usize] = ptr;
-            //                 table[ptr] = (
-            //                     u128_to_fr(amount),
-            //                     amount as i128,
-            //                     Some(
-            //                         tx.addr
-            //                             .clone()
-            //                             .mul(&MUL160)
-            //                             .add(&u32_to_fr(tx.nonce).mul(&MUL128))
-            //                             .add(&u128_to_fr(tx.balance)),
-            //                     ),
-            //                     tx.nonce,
-            //                     tx.balance,
-            //                 );
-            //                 ptr += 1;
-            //             } else {
-            //                 // user is recorded, leave 1: proof_param, origin_nonce,
-            //                 table[mapping[to as usize]].0 =
-            //                     table[mapping[to as usize]].0.add(&u128_to_fr(amount));
-            //                 table[mapping[to as usize]].1 += amount;
-            //             }
-            //         }
-            //         TxType::Withdraw(from, amount) => {
-            //             overall_change -= amount as i128;
-
-            //             if mapping[from as usize] == 0 {
-            //                 points2prove.push(ptr);
-            //                 mapping[from as usize] = ptr;
-            //                 table[ptr] = (
-            //                     u128_to_fr(amount).neg(),
-            //                     -(amount as i128),
-            //                     Some(
-            //                         tx.addr
-            //                             .clone()
-            //                             .mul(&MUL160)
-            //                             .add(&MUL128)
-            //                             .add(&u128_to_fr(tx.balance)),
-            //                     ),
-            //                     tx.nonce,
-            //                     tx.balance,
-            //                 );
-            //                 ptr += 1;
-            //             } else {
-            //                 table[mapping[from as usize]].0 =
-            //                     table[mapping[from]].0.sub(&u128_to_fr(amount));
-            //                 table[mapping[from as usize]].1 -= amount;
-            //             }
-            //             // balance sufficiency check
-            //             if let None = tx.balance.checked_sub(table[mapping[from]].1) {
-            //                 return Err(());
-            //             }
-            //         }
-            //         // A block submitted by L2 service only contains Transfer and Register transactions.
-            //         TxType::Transfer(from, to, amount) => {
-            //             if mapping[from as usize] == 0 {
-            //                 points2prove.push(ptr);
-            //                 mapping[from as usize] = ptr;
-            //                 table[ptr] = (
-            //                     E::Fr::from(2).pow(&[128]).sub(&u128_to_fr(amount)),
-            //                     -amount,
-            //                     Some(
-            //                         tx.addr
-            //                             .clone()
-            //                             .mul(&MUL160)
-            //                             .add(&u32_to_fr(tx.nonce - 1).mul(&MUL128))
-            //                             .add(&u128_to_fr(tx.balance)),
-            //                     ),
-            //                     tx.nonce,
-            //                     tx.balance,
-            //                 );
-            //                 ptr += 1;
-            //             } else {
-            //                 match table[mapping[from as usize]].2 {
-            //                     None => {
-            //                         // point's point_value not calculated, nonce, balance not recorded.
-            //                         // point_value, nonce, balance should be added here.
-            //                         let pos = mapping.get[from as usize];
-            //                         points2prove.push(pos);
-            //                         table[pos as usize] = (
-            //                             table[pos].0.add(&MUL128).sub(&u128_to_fr(amount)),
-            //                             table[pos].1 - amount,
-            //                             Some(
-            //                                 tx.addr
-            //                                     .clone()
-            //                                     .mul(&MUL160)
-            //                                     .add(
-            //                                         E::Fr::from(tx.nonce - 1)
-            //                                             .mul(E::Fr::from(2).pow(&[128])),
-            //                                     )
-            //                                     .add(&u128_to_fr(tx.balance)),
-            //                             ),
-            //                             tx.nonce,
-            //                             tx.balance,
-            //                         );
-            //                     }
-            //                     Some(_) => {
-            //                         // point's point_value, nonce, balance recorded.
-            //                         let pos = mapping[from];
-            //                         if tx.nonce - table[pos].3 != 1 {
-            //                             return Err(());
-            //                         }
-            //                         table[pos].0 =
-            //                             table[pos].0.add(&MUL128).sub(&u128_to_fr(amount));
-            //                         table[pos].1 -= amount;
-            //                         table[pos].3 = tx.nonce;
-            //                     }
-            //                 }
-            //             }
-            //             // balance sufficiency check
-            //             if let None = tx.balance.checked_sub(table[mapping[from]].1) {
-            //                 return Err(());
-            //             }
-            //             if mapping[to as usize] == 0 {
-            //                 // In a Transfer, the nonce of transfer-to account remains unchanged.
-            //                 mapping[to as usize] = ptr;
-            //                 table[ptr] = (&u128_to_fr(amount), amount, None, 0, 0);
-            //                 ptr += 1;
-            //             } else {
-            //                 // point_value cannot be calculated here.
-            //                 let pos = mapping[to as usize];
-            //                 table[pos].0 = table[pos].0.add(&u128_to_fr(amount));
-            //                 table[pos].1 += amount;
-            //             }
-            //         }
-            //         TxType::Register(to) => {
-            //             // A user must be registered to got paid.
-            //             // So the Registration should happen on a new user.
-            //             mapping[to as usize] = ptr;
-            //             table[ptr] = (
-            //                 tx.addr.clone().mul(&MUL160).add(&MUL128),
-            //                 0,
-            //                 Some(
-            //                     u32_to_fr(tx.nonce - 1)
-            //                         .mul(&MUL128)
-            //                         .add(&u128_to_fr(tx.balance)),
-            //                 ),
-            //                 tx.nonce,
-            //                 tx.balance,
-            //             );
-            //             ptr += 1;
-            //         }
-            //     }
-            // }
-        }
-
         let mut point_values = Vec::new();
         let mut tmp_commit = self.commit.clone();
+
         for point in &points2prove {
             point_values.push(table[*point as usize].2.unwrap());
             tmp_commit = update_commit(
@@ -446,6 +266,7 @@ impl<E: PairingEngine> Block<E> {
             )
             .map_err(|_| String::from("BLOCK_VERIFY: update commit failure!"))?;
         }
+
         verify_pos::<E>(
             &cell_upks.vk,
             &self.commit,

@@ -106,7 +106,7 @@ impl<E: PairingEngine> Storage<E> {
 
     pub fn new_and_inc_next_nonce(&mut self, u: u32) -> u32 {
         let nonce = self.tmp_nonces[u as usize];
-        self.tmp_nonces[u as usize] =nonce + 1;
+        self.tmp_nonces[u as usize] = nonce + 1;
         nonce + 1
     }
 
@@ -182,7 +182,7 @@ impl<E: PairingEngine> Storage<E> {
         // }
 
         let nonce_offest_fr = E::Fr::from(2).pow(&[128]);
-            // <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
+        // <E::Fr as PrimeField>::from_repr(repr).mul(&E::Fr::from(2).pow(&[128]));
 
         let mut point_state = HashMap::<u32, (E::Fr, u32, u128, u32, i128)>::new();
 
@@ -387,7 +387,7 @@ impl<E: PairingEngine> Storage<E> {
                             .balances
                             .insert(to, self.balances[to as usize] + amount);
                     }
-                    self.tmp_nonces[from as usize] +=1;
+                    self.tmp_nonces[from as usize] += 1;
                     txlist.push(tx);
                 }
                 TxType::Register(account) => {
@@ -431,7 +431,6 @@ impl<E: PairingEngine> Storage<E> {
                 TxType::Withdraw(from, amount) => {
                     return None;
                 }
-                
             }
         }
 
@@ -564,8 +563,8 @@ impl<E: PairingEngine> Storage<E> {
         let mut cvalues = HashMap::<u32, E::Fr>::new();
         for (account, balance) in storage.balances.drain() {
             // println!("account={}， balance={}, self.balances[account as usize]={}", account, balance, self.balances[account as usize]);
-        
-            if  balance >= self.balances[account as usize]{
+
+            if balance >= self.balances[account as usize] {
                 let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
                     balance - &self.balances[account as usize],
                 ));
@@ -574,7 +573,8 @@ impl<E: PairingEngine> Storage<E> {
             } else {
                 let cv = E::Fr::from_repr(<E::Fr as PrimeField>::BigInt::from_u128(
                     self.balances[account as usize] - &balance,
-                )).neg();
+                ))
+                .neg();
                 cvalues.insert(account, cv);
                 self.balances[account as usize] = balance;
             }
