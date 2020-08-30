@@ -151,7 +151,7 @@ impl<E: PairingEngine> Storage<E> {
             amount,
             self.user_fpk(from),
             // use current block's nonce, not add it.
-            self.nonces[from as usize] - 1,
+            self.nonces[from as usize],
             // in one block, balance if current block balance, not tmp_balance
             self.balances[from as usize],
             self.user_proof(from),
@@ -165,7 +165,7 @@ impl<E: PairingEngine> Storage<E> {
             amount,
             self.user_fpk(from),
             // use current block's nonce, not add it.
-            self.nonces[from as usize] - 1,
+            self.nonces[from as usize],
             // in one block, balance if current block balance, not tmp_balance
             self.balances[from as usize],
             self.user_proof(from),
@@ -183,8 +183,8 @@ impl<E: PairingEngine> Storage<E> {
         Transaction::new_register(
             from,
             new_fpk,
-            // use current block's nonce, not add it.
-            self.nonces[from as usize] - 1,
+            // when register his nonce must eq = 0
+            0,
             // in one block, balance if current block balance, not tmp_balance
             self.balances[from as usize],
             self.user_proof(from),
@@ -280,8 +280,6 @@ impl<E: PairingEngine> Storage<E> {
                     )
                     .expect("UPDATE REGISTER COMMIT FAILURE");
 
-                    println!("======TEST HERER====");
-
                     froms.push(tx.from());
                     proofs.push(tx.proof.clone());
                 }
@@ -371,12 +369,11 @@ impl<E: PairingEngine> Storage<E> {
 
     /// handle when the block commit to L1.
     pub fn handle_block(&mut self, block: Block<E>) {
-        println!("HANDLE BLOCK: {}", block.block_height);
         let n = ACCOUNT_SIZE;
 
         self.block_height = block.block_height;
         println!(
-            "block_height = {}, old commit = {}, new commit = {}",
+            "HANDLE BLOCK: block_height = {}, old commit = {}, new commit = {}",
             block.block_height, self.commit.commit, block.new_commit.commit
         );
 
