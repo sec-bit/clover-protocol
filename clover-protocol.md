@@ -1,14 +1,12 @@
-
-
 # Clover Protocol, a lightweight zkRollup approach for Nervos/CKB
 
 *SECBIT Labs*
 
 ## What is zkRollup?
 
-Proposed by Barry Whitehat in 2018,  zkRollup is a novel Layer-2 protocol that enables performance scaling of blockchains without compromising security. We 
+Proposed by Barry Whitehat in 2018,  zkRollup is a novel Layer-2 protocol that enables performance scaling of blockchains without compromising security. 
 
-In zk-Rollup, users send transactions on a separate P2P network(usually called L2), a relayer (also called aggregator, operator) collects these transactions, verifies the validity of each transaction, and generates the new state of L2. Meanwhile, it generates a (succinct) SNARK proof, proving that the new state can be transitioned by the transition function formed by these transactions. After that, it sends a transaction to a L1 smart contract, i.e., it posts(1)the new state of L2; (2) minimum bits (13 bytes for each transaction) of transition data; and (3) the SNARK proof that the transition function is valid. The transition data is put in the calldata region, which has a lower gas fee then directly put them on the state. Compared to other scaling solutions, zk-Rollup has several advantages: it solves the data availability problem; meanwhile, users almost have full control of their funds stored in L2. There's no need to be always online to submit a fraud-proof or participate in a game, which is vulnerable to DoS attacks. The safety level of users' funds is almost the same as L1. The throughput for the live zk-Rollup system on Ethereum is 300 TPS. So there's considerable potential to increase this number to 2000 TPS further. 
+In zk-Rollup, users send transactions on a separate P2P network(usually called L2), a relayer (also called aggregator, operator) collects these transactions, verifies the validity of each transaction, and generates the new state of L2. Meanwhile, it generates a (succinct) SNARK proof, proving that the new state can be transitioned by the transition function formed by these transactions. After that, it sends a transaction to a L1 smart contract, i.e., it posts: (1)the new state of L2; (2) minimum bits (13 bytes for each transaction) of transition data; and (3) the SNARK proof that the transition function is valid. The transition data is put in the calldata region, which has a lower gas fee then directly put them on the state. Compared to other scaling solutions, zk-Rollup has several advantages: it solves the data availability problem; meanwhile, users almost have full control of their funds stored in L2. There's no need to be always online to submit a fraud-proof or participate in a game, which is vulnerable to DoS attacks. The safety level of users' funds is almost the same as L1. The throughput for the live zk-Rollup system on Ethereum is 300 TPS. So there's considerable potential to increase this number to 2000 TPS further. 
 
 zkRollup needs to construct a new set of accounts on top of the Layer-1 protocol, as the state of the Layer-2. We can set up an off-chain node (called Operator) to process transactions for the Layer-2 protocol and to maintain and update the Layer 2 protocol's world state. To prevent the operator from doing anything bad, we require the operator to commit all transaction data onto the chain and then the Layer-1 protocol verify the reliability of the transaction data via a smart contract. If the operator simply puts all transactions up the chain naively, the efficiency of the Layer-2 protocol will be limited by the performance of the Layer-1 protocol, and performance scaling will not be possible. Then cryptography comes in. zkRollup employs cryptography in two places, allowing Layer-1 smart contracts to verify Layer-2 transaction data at a fraction of the cost of Layer-1 smart contracts. 
 
@@ -148,21 +146,11 @@ $(c,I,J,\vec{v}_I,\vec{v}_J',\pi_I,\pi_J) \leftarrow A(1^{\lambda},prk,vrk,\vec{
 
 $Pr[VC.VerifyPos(vrk,c,\vec{v}*{I},I,\pi*{I}) = True \wedge VC.VerifyPos(vrk,c,\vec{v}*{J},J,\pi*{J}) = True \wedge \exists k \in I \cap J, s.t. v_k \neq v_k'] \leq negl(\lambda)$
 
-#### Therotical Performance of aSVC scheme in [TAB+20]
-
-We refer to [TAB+20] to the detailed design of scheme. 
-
-Asymptotic complexity based on prime-order groups. $n$ is the vector size and $b$ is the subvector size. 
-
-#### Practical Performance of aSVC scheme in [TAB+20]
-
-Todo 补充实测数据，若没有则本段删除
-
 ## aSVC based L2 Rollup on Nervos CKB
 
 ### post_block
 
-![image-20200830054452501](/Users/adawang/Library/Application Support/typora-user-images/image-20200830054452501.png)
+![image-post_block](assets/post-block.png)
 
 Suppose we create a data cell on CKB, storing the latest commitment of the aSVC based stateless cryptocurrency blockchain described above. The commitment cell can be updated (create a L1 transaction to destroy the old cell and create a new cell to store the variable) if and only if commitment update logic = True. Therefore, the lock script of commitment data cell is the logic described above in "validating blocks" paragraph. Transactions of the block (i.e., L2 rollup here) is used to verify the validity of state transistion, and will not be used later. Therefore, $a$ $INIT$ transactions and $b$ $SPEND$ transactions can be put in the witness field in the L1 transaction that update the commitment. We add a $tx_type$ field in the witness in order to let lock script distinguish different kinds of action, i.e., the lock script first checks the $tx_type$ and then do the verification against the corresponding $tx_type$. In addition, the lock script of commitment data cell shall also verify that there should be only one input cell contains old commitment and one output cell contains new commitment, in order to ensure that there is only one commitment data cell at each L1 block height. For simplicity, we omit input cell which is used for paying transaction fees. Constant values like public parameters of VC is stored in a fixed cell. When a script needs to load a constant, the data cell that stores the constant will be put in the cell_dep field of the L1 transaction. 
 
@@ -172,11 +160,11 @@ So far, since L2 Rollup has its own state, in order to transform the aSVC based 
 
 ### deposit
 
-![image-20200830083112928](/Users/adawang/Library/Application Support/typora-user-images/image-20200830083112928.png)
+![image-deposit](assets/deposit.png)
 
 The solution is, we create a vault cell. Like commitment cell, at each block height, there should be only one live vault cell. The Type field of vault cell is Asset Type, which is usally a UDT token script, to ensure the sum of UDT amount in the input cell is larger than that of output cell. 
 
-If a depositor wants to deposit $deposit_ammount$ UDT tokens to a receiver whose index in L2 is $row_receiver$. The depositor creates a transaction which contains three type of input cell:
+If a depositor wants to deposit $deposit\_ammount$ UDT tokens to a receiver whose index in L2 is $row\_receiver$. The depositor creates a transaction which contains three type of input cell:
 
 1. one or more UDT cell which Lock field is secp256k1 with depositor's pk_hash, the summation of data field of these cells is $deposit\_amount$
 2. the vault cell, data is $vault\_amount$
@@ -184,7 +172,7 @@ If a depositor wants to deposit $deposit_ammount$ UDT tokens to a receiver whose
 
 two types of output cell:
 
-1. the vault cell, data is $vault_amount$+$deposit_amount$
+1. the vault cell, data is $vault\_amount+deposit\_amount$
 2. the commitment cell, data is $c_1$
 
 Other output cell with UDT type field can surely be added here, we just omit for simplicity.
@@ -194,12 +182,12 @@ the witness of this transaction is
 1. depositor's signature 
 2. some update_commitment_witness，which consists of(but may not limited to):
 
-- $c_1 = VC.UpdateComm(c_0, deposit_ammount, row_user, upk_{row_user})$ 
+- $c_1 = VC.UpdateComm(c_0, deposit\_ammount, row\_user, upk_{row\_user})$ 
 - $i = row\_user$ 
 - $\delta=deposit\_amout$ 
 - $tx\_type=deposit$ 
 
-The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx_type == deposit$:
+The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx\_type == deposit$:
 
 1. There is one and only one commitment cell in input cell
 2. There is one and only one commitment cell in output cell
@@ -209,15 +197,15 @@ The lock script of vault cell and commitment cell is exactly same (with same cod
 
 A depositor can deposit at any time permissionlessly, as long as depositor sychronize the latest valid block. After this transaction is settled on CKB, miners and users can update balance position proof for $\pi_{j}'$ by $\pi_{j}'=VC.UpdatePosProof(\pi_{j}, \delta, j, i, upk_j,upk_i)$
 
-We remark that, a depositor can deposit fund from his or her own L1 "account" to any user "account" on L2. Therefore, if $pk_{row_user}$ does not equal depositor's $pk$, the actual action is a transfer action, i.e, depositor transfer $deposit_amount$ tokens from his or her L1 account to someone else's L2 account.
+We remark that, a depositor can deposit fund from his or her own L1 "account" to any user "account" on L2. Therefore, if $pk_{row\_user}$ does not equal depositor's $pk$, the actual action is a transfer action, i.e, depositor transfer $deposit\_amount$ tokens from his or her L1 account to someone else's L2 account.
 
 ### withdraw
 
-![image-20200830083135328](/Users/adawang/Library/Application Support/typora-user-images/image-20200830083135328.png)
+![image-withdraw](assets/withdraw.png)
 
 Withdraw is very similar to deposit, with minor difference. 
 
-If a payee with L2 account index $row_payee$ wants to withdraw $withdraw_ammount$ UDT tokens to a receiver whose pk_hash in L1 is $pk_hash_{receiver}$. The payee creates a transaction which contains two type of input cell:
+If a payee with L2 account index $row\_payee$ wants to withdraw $withdraw\_ammount$ UDT tokens to a receiver whose pk_hash in L1 is $pk\_hash_{receiver}$. The payee creates a transaction which contains two type of input cell:
 
 1. the vault cell, data is $vault\_amount$
 2. the commitment cell, data is $c_0$
@@ -226,22 +214,22 @@ two types of output cell:
 
 1. the vault cell, data is $vault\_amount-withdraw\_amount$
 2. the commitment cell, data is $c_1$
-3. one or more UDT cell which Lock field is secp256k1 with receiver's $pk\_hash\_{receiver}$, the summation of data field of these cells is $withdraw\_amount$
+3. one or more UDT cell which Lock field is secp256k1 with receiver's $pk\_hash_{receiver}$, the summation of data field of these cells is $withdraw\_amount$
 
 the witness of this transaction is:
 
 1. payee's signature for this tx
 2. some update_commitment_witness，which consists of (but may not limited to):
 
-- $c_1 = VC.UpdateComm(c_0, -withdraw\_ammount, row\_payee, upk\_{row\_payee})$ 
-- $i = row_payee$ 
+- $c_1 = VC.UpdateComm(c_0, -withdraw\_ammount, row\_payee, upk_{row\_payee})$ 
+- $i = row\_payee$ 
 - $addr||nonce||v$ 
 - $pk\_payee$
 - $\pi_i$
 - $\delta=-deposit\_amout$ 
-- $tx\_type=withdraw$ 
+- $tx_type=withdraw$ 
 
-The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx_type == withdraw$:
+The lock script of vault cell and commitment cell is exactly same (with same code_hash and args field), which first checks the $tx_type$ and then do the verificaiton against $tx\_type == withdraw$:
 
 1. There is one and only one commitment cell in input cell of tx
 2. There is one and only one commitment cell in output cell of tx
@@ -249,13 +237,13 @@ The lock script of vault cell and commitment cell is exactly same (with same cod
 4. There is one and only one vault cell in output cell of tx
 5. $c_1=VC.UpdateComm(c_0, \delta, i, upk_i)$ 
 6. $VC.VerifyPos(vrk,c_0,addr||nonce||v,i,\pi_{i}) = True$
-7. $v>withdraw_amount$
-8. $ addr = H(row\_payee||upk\_{row\_payee}||pk\_{payee})$
-9. payee's signature plus $pk_payee$ can pass signature verification 
+7. $v>withdraw\_amount$
+8. $ addr = H(row\_payee||upk_{row\_payee}||pk_{payee})$
+9. payee's signature plus $pk\_payee$ can pass signature verification 
 
 As same as deposit action, a payee can withdraw at any time permissionlessly, as long as payee sychronize the latest valid block.After this transaction is settled on CKB, miners and users can update balance position proof for $\pi_{j}'$ by $\pi_{j}'=VC.UpdatePosProof(\pi_{j}, \delta, j, i, upk_j,upk_i)$
 
-As same as deposit action, we remark that, a payee can withdraw fund from his or her own L2 "account" to any user "account" on L1. Therefore, if $pk_{row_receiver}$ does not equal payee's $pk$, the actual action is a transfer action, i.e, payee transfer $withdraw_amount$ tokens from his or her L2 account to someone else's L1 account.
+As same as deposit action, we remark that, a payee can withdraw fund from his or her own L2 "account" to any user "account" on L1. Therefore, if $pk_{row\_receiver}$ does not equal payee's $pk$, the actual action is a transfer action, i.e, payee transfer $withdraw\_amount$ tokens from his or her L2 account to someone else's L1 account.
 
 ### Recap
 
@@ -284,14 +272,14 @@ The Clover protocol relies on aSVC, whose security assumptions rely on a relativ
 
 The Clover protocol relies on the CKB-ZKP library of zero-knowledge proof algorithms, which is currently under development and has not yet met the security requirements of a production environment. It hasn't been audited by any  third-party security teams.
 
-### Instantiation
+### instantiation
 
 The system has some setup parameters and we instantiate with these parameters: 
 
 1. account_num: max amounts L2 Rollup supports, default is 1024
 2. token_num: max UDT tokens L2 Rollup supports, default is 1
 3. (code_hash, OutPoint, args): list of UDT token L2 supports
-4. ellipitic_curve: the elliptic curve used when instantiating groups in vc scheme, default is BN256, BLS12-381
+4. ellipitic_curve: the elliptic curve used when instantiating groups in vc scheme, default is BN256, BLS12-381 is also implemented and can be used
 5. hash_algorithm: hash algorithm, default is MIMC
 
 ## Implementation 
@@ -312,7 +300,6 @@ The following tables show the performance of aSVC library.
 |      131072       |       360 ms        | 30 ms   | 132 ms |        21 ms        | 117 s  | < 1 ms            | 7ms |
 |      1048576      |        2.2 s        | 330 ms  | 6 ms   |        27 ms        | 976 s      | < 1 ms            | 7ms |
 
-
 The VM execution costs (mcycles = million cycles of CKB-VM):
 
 |     Opt     | Contract Size | Register    | Deposit     |  Withdraw   | Transfer    |
@@ -326,8 +313,6 @@ The size of cells:
 | :------: | :----: | ----------------------- |
 | n = 128  | 41 KB  | 12 KB (tx counts = 90)  |
 | n = 1024 | 332 KB | 25 KB (tx counts = 175) |
-
-
 
 The code of  can be divided into on-chain contract part, off-chain node part and ckb helper module.
 
@@ -382,14 +367,18 @@ The code of  can be divided into on-chain contract part, off-chain node part and
    * **ckb_rpc**: rpc interface to read data from the chain.
    * **test**: test scripts
 
-
-
-
 ## Next Step
+
+### Solving the issue of creating invalid commitment cell
+There remains a small issue in the design of current version: if an attacker creates a transaction, the transaction output cell contains a commitment cell, i.e., the `lock_script` field match the pre_defined commitment cell `lock_script`. According to the rule, if the commitment is updated, the attacker must put the commitment cell at latest height in the input cell. However, the transaction verification rule cannot prevent an attacker from not putting the latest commitment cell in this transaction. Therefore, the attacker can create commitment cell with arbitrary commitment data in the cell `data` filed, without destroying the latest valid commitment cell.
+
+It is easy to solve this problem. We can add some verification rules in the commitment data cell's type script in order to ensure that only one commitment cell can be alive at each block height: The commitment cell can be initialized only once. After that, if the type script ensures that if a commitment cell is put in the output cell in a transaction, there must be one and only one commitment cell in the input of transaction. Therefore, if someone wants to update the commitment, he or she must destroy the old commitment cell, preventing the attacks described above.
+
+We haven't implement this in the current version due to the time limit, we manage to implement this in the next version.
 
 ### Put constant parameter in a fixed cell and "invoke" them in `cell_deps` field
 
-Constant parameters that SUV script uses during execution is designed to be stored in a fixed living data cell, i.e., every time SUV executes, the cells contain constant parameters shall put in the `cell_deps` field of the transaction. However, due to some technical reasons, at this moment, these cells are placed in `input_cell` and `output_cel` field.
+Constant parameters that SUV script uses during execution is designed to be stored in a fixed living data cell, i.e., every time SUV executes, the cells contain constant parameters shall put in the `cell_deps` field of the transaction. However, due to some technical reasons, at this moment, these cells are placed in `input_cell` and `output_cell` field.
 
 ### Add L2 tx fee
 
@@ -401,7 +390,7 @@ Public constant parameters are stored on Layer-1 cell, among them, the size of $
 
 ### Reduce verification cycles
 
-The Clover protocol has not yet been implemented to compress the transaction validity checking process, we will use the Marlin protocol[] to compress the transaction validity checking calculation in the next update.
+The Clover protocol has not yet been implemented to compress the transaction validity checking process, we will use the Marlin protocol[7] to compress the transaction validity checking calculation in the next update.
 
 + Signature Verification Process
 + Range proofs  of account balances
@@ -410,7 +399,7 @@ This compresses the validation overhead of the on-chain computation to O(1), plu
 
 ### Support more tokens in L2
 
-We design the current system without considering more than one token. Thanks to the feasibility of CKB, it is easy to issue UDT tokens without redeploying contracts, make a new UDT instance make it very friendly to other apps. If our system wants to support more than 2 UDT tokens, we need to consider leveraging the advantage of this CKB feature. 
+We design the current system without considering more than one token. Thanks to the feasibility of CKB, it is easy to issue UDT tokens without redeploying contracts, make a new UDT instance make it very friendly to other apps. If our system wants to support more than 1 UDT tokens, we need to consider leveraging the advantage of this CKB feature. 
 
 ### Add signature verification to validity proof
 
@@ -418,7 +407,7 @@ In the current version, we focus on implementing the aSVC scheme and get some se
 
 ### Expand scenarios from payment to more
 
-in the current version, the Rollup only supports payment related action. We managed to explore more scenarios in the future, such as DEX.
+In the current version, the Rollup only supports payment related action. We managed to explore more scenarios in the future, such as DEX.
 
 ### Multiple operators 
 
@@ -434,4 +423,3 @@ In order to improve the user experience, the proof of a user's account balance n
 - [6] Maller, Mary, Sean Bowe, Markulf Kohlweiss, and Sarah Meiklejohn. "Sonic: Zero-knowledge SNARKs from linear-size universal and updatable structured reference strings." In *Proceedings of the 2019 ACM SIGSAC Conference on Computer and Communications Security*, pp. 2111-2128. 2019.
 - [7] Chiesa, Alessandro, Yuncong Hu, Mary Maller, Pratyush Mishra, Noah Vesely, and Nicholas Ward. "Marlin: Preprocessing zksnarks with universal and updatable srs." In *Annual International Conference on the Theory and Applications of Cryptographic Techniques*, pp. 738-768. Springer, Cham, 2020.
 - [8] Tomescu, Alin, Ittai Abraham, Vitalik Buterin, Justin Drake, Dankrad Feist, and Dmitry Khovratovich. "Aggregatable Subvector Commitments for Stateless Cryptocurrencies." IACR Cryptol. ePrint Arch. 2020 (2020): 527.
-- [9] 
