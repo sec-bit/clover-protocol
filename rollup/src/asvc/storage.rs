@@ -457,6 +457,13 @@ impl<E: PairingEngine> Storage<E> {
         )
         .expect("UPDATE PROOFS FAILURE");
 
+        // 3. UPDATE POOL
+        for (_hash, tx) in self.pools.iter_mut() {
+            let from = tx.from();
+            tx.balance = self.balances[from as usize];
+            tx.proof = self.proofs[from as usize].clone();
+        }
+
         println!("HANDLE BLOCK OVER");
     }
 
