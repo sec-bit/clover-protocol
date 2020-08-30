@@ -6,6 +6,7 @@ use ckb_zkp::scheme::asvc::{
 };
 use ckb_zkp::scheme::r1cs::SynthesisError;
 use std::collections::HashMap;
+use ordermap::OrderMap;
 use std::ops::{Add, Mul, Neg, Sub};
 
 use super::asvc::update_proofs;
@@ -26,7 +27,7 @@ pub struct Storage<E: PairingEngine> {
     pub block_height: u32,
     pub tmp_block_height: u32,
     pub blocks: Vec<Block<E>>,
-    pub pools: HashMap<TxHash, Transaction<E>>,
+    pub pools: OrderMap<TxHash, Transaction<E>>,
 
     /// const params
     pub omega: E::Fr,
@@ -75,7 +76,7 @@ impl<E: PairingEngine> Storage<E> {
             tmp_block_height: 0,
             omega: domain.group_gen,
             blocks: vec![],
-            pools: HashMap::new(),
+            pools: OrderMap::new(),
             proofs: proofs,
             params: params,
             commit: commit,
@@ -151,7 +152,7 @@ impl<E: PairingEngine> Storage<E> {
                 }
                 TxType::Register(from) => {
                     self.tmp_next_user += 1;
-                    println!("[try_insert_tx]-------tmp_next_user: tx.account={}, tmp_next_user={}",from, self.tmp_next_user);
+                    // println!("[try_insert_tx]-------tmp_next_user: tx.account={}, tmp_next_user={}",from, self.tmp_next_user);
                 }
                 TxType::Deposit(_to, _amount) => {
                     // not handle deposit
@@ -169,7 +170,7 @@ impl<E: PairingEngine> Storage<E> {
         true
     }
 
-    /// deposit & withdraw use when operate on L1, need build a block to change.
+    /// transfer & register use when operate on L1, need build a block to change.
     pub fn build_block(&mut self, txs: Vec<Transaction<E>>) -> Option<Block<E>> {
         let n = ACCOUNT_SIZE;
         let omega = self.omega;
@@ -199,7 +200,7 @@ impl<E: PairingEngine> Storage<E> {
 
         let mut txlist = Vec::<Transaction<E>>::new();
 
-        println!("[build_block] len= {}", txs.len());
+        // println!("[build_block] len= {}", txs.len());
         for tx in txs.iter() {
             let mut tx = tx.clone();
 
@@ -223,7 +224,7 @@ impl<E: PairingEngine> Storage<E> {
                             if amount as i128 > tx.balance as i128 + balance_change {
                                 continue;
                             }
-                            // println!("[build_block] - [transfer] contains key...nonce=0, nonce={}, last nonce={}", tx.nonce, self.nonces[from as usize]);
+                            // println!("[build_block] - [transfer] contains key...nonce={}, from={}, last nonce={}", tx.nonce, from, self.nonces[from as usize]);
 
                             let mut origin_proof_params = tx.addr.mul(&E::Fr::from(2).pow(&[160]));
                             origin_proof_params += &(E::Fr::from_repr(
@@ -248,7 +249,7 @@ impl<E: PairingEngine> Storage<E> {
                             } else {
                                 continue;
                             }
-                            println!("[build_block] verify success...");
+                            // println!("[build_block] nonce={} verify success...", tx.nonce);
 
                             froms.push(tx.from());
                             proofs.push(tx.proof.clone());
@@ -264,9 +265,13 @@ impl<E: PairingEngine> Storage<E> {
                             );
                         } else {
                             if amount as i128 > tx.balance as i128 + balance_change {
+                                // println!("[build_block] - [transfer]: error1: balance={}, balance_change={}, amount={},  nonce={}, from={}, to={}", 
+                                // tx.balance, balance_change, amount, nonce, from, to);
                                 continue;
                             }
                             if tx.nonce != next_nonce {
+                                // println!("[build_block] - [transfer]: balance={}, balance_change={}, amount={},  nonce={}, next_nonce={}, from={}, to={}", 
+                                // tx.balance, balance_change, amount, nonce, next_nonce, from, to);
                                 continue;
                             }
                             point_state.insert(
@@ -307,14 +312,14 @@ impl<E: PairingEngine> Storage<E> {
                             omega,
                         ) {
                             if !res {
-                                println!("[build_block] - [transfer]:verify failed. 1");
+                                // println!("[build_block] - [transfer]:verify failed. 1");
                                 continue;
                             }
                         } else {
-                            println!("[build_block] - [transfer]:verify failed. 2");
+                            // println!("[build_block] - [transfer]:verify failed. 2");
                             continue;
                         }
-                        println!("[build_block] verify tx success...");
+                        // println!("[build_block] nonce={}, verify tx success...",tx.nonce);
 
                         froms.push(tx.from());
                         proofs.push(tx.proof.clone());
@@ -550,7 +555,7 @@ impl<E: PairingEngine> Storage<E> {
             return None;
         }
 
-        let txs = self.pools.drain().map(|(_k, v)| v).collect();
+        let txs = self.pools.drain(..).map(|(_k, v)| v).collect();
         // let mut txs = self.pools.clone();
         self.build_block(txs)
     }

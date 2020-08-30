@@ -2697,6 +2697,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordermap"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91409674c628d07a6b4b79cc877c6b63ba5ccbfbadddd77ca822f55069ed1bd4"
+
+[[package]]
 name = "owning_ref"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3303,6 +3309,7 @@ dependencies = [
  "ckb-zkp",
  "ckb_rpc",
  "hex",
+ "ordermap",
  "rand 0.7.3",
  "serde",
  "serde_json",
