@@ -6,7 +6,7 @@
 
 Proposed by Barry Whitehat in 2018,  zkRollup is a novel Layer-2 protocol that enables performance scaling of blockchains without compromising security. 
 
-In zk-Rollup, users send transactions on a separate P2P network(usually called L2), a relayer (also called aggregator, operator) collects these transactions, verifies the validity of each transaction, and generates the new state of L2. Meanwhile, it generates a (succinct) SNARK proof, proving that the new state can be transitioned by the transition function formed by these transactions. After that, it sends a transaction to a L1 smart contract, i.e., it posts: (1)the new state of L2; (2) minimum bits (13 bytes for each transaction) of transition data; and (3) the SNARK proof that the transition function is valid. The transition data is put in the calldata region, which has a lower gas fee then directly put them on the state. Compared to other scaling solutions, zk-Rollup has several advantages: it solves the data availability problem; meanwhile, users almost have full control of their funds stored in L2. There's no need to be always online to submit a fraud-proof or participate in a game, which is vulnerable to DoS attacks. The safety level of users' funds is almost the same as L1. The throughput for the live zk-Rollup system on Ethereum is 300 TPS. So there's considerable potential to increase this number to 2000 TPS further. 
+In zkRollup, users send transactions on a separate P2P network(usually called L2), a relayer (also called aggregator, operator) collects these transactions, verifies the validity of each transaction, and generates the new state of L2. Meanwhile, it generates a (succinct) SNARK proof, proving that the new state can be transitioned by the transition function formed by these transactions. After that, it sends a transaction to a L1 smart contract, i.e., it posts: (1)the new state of L2; (2) minimum bits (13 bytes for each transaction) of transition data; and (3) the SNARK proof that the transition function is valid. The transition data is put in the calldata region, which has a lower gas fee then directly put them on the state. Compared to other scaling solutions, zkRollup has several advantages: it solves the data availability problem; meanwhile, users almost have full control of their funds stored in L2. There's no need to be always online to submit a fraud-proof or participate in a game, which is vulnerable to DoS attacks. The safety level of users' funds is almost the same as L1. The throughput for the live zkRollup system on Ethereum mainnet (zkSync, Matter Lab's version of zkRollup) is 300 TPS . So there's considerable potential to increase this number to 2000 TPS further. 
 
 zkRollup needs to construct a new set of accounts on top of the Layer-1 protocol, as the state of the Layer-2. We can set up an off-chain node (called Operator) to process transactions for the Layer-2 protocol and to maintain and update the Layer 2 protocol's world state. To prevent the operator from doing anything bad, we require the operator to commit all transaction data onto the chain and then the Layer-1 protocol verify the reliability of the transaction data via a smart contract. If the operator simply puts all transactions up the chain naively, the efficiency of the Layer-2 protocol will be limited by the performance of the Layer-1 protocol, and performance scaling will not be possible. Then cryptography comes in. zkRollup employs cryptography in two places, allowing Layer-1 smart contracts to verify Layer-2 transaction data at a fraction of the cost of Layer-1 smart contracts. 
 
@@ -14,7 +14,7 @@ The first place is the maintanence of the world state. Layer-1 protocol needs to
 
 The other place is the verification of the validity of transactions. Whether a transaction is valid includes three parts: the validity of the transaction amount, the validity of the transaction signature, and the validity of the transaction data. In the absence of complete world state, these verifications cannot be performed by a Layer-1 smart contract either, and the Layer-2 operator needs to submit a Zero-knowledge Proof to prove that she has completed the transaction validation computation off-chain, and that the world state on which this computation is based corresponds to the commitment of world state stored on the Layer-1.
 
-In the past, zkRollup frameworks were proposed, such as Loopring, zksync, etc., use zkSNARKs (esp., Groth16) to compress the computation over the world states. However, the frameworks are heavyweight, needing huge computing resources. Due to the bottleneck of SNARKs, zk-Rollup is not easy to implement complex logics other than payments and order book based DEXs so far. Another type of Rollup is optimistic Rollup introduced by John Adler in 2019. In short, it also put the data on-chain, but not using zk-SNARK for verification to achieve general-purpose applications. The amount of data becomes larger because users' signatures are put on-chain. Therefore the transaction speed will be less than ZK Rollup. The other part is that users need to participate in a validation game to ensure data validation because it does not use validity proof for verification.
+In the past, zkRollup frameworks were proposed, such as Loopring, zkSync, etc., use zkSNARKs (esp., Groth16) to compress the computation over the world states. However, the frameworks are heavyweight, needing huge computing resources. Due to the bottleneck of SNARKs, zkRollup is not easy to implement complex logics other than payments and order book based DEXs so far. Another type of Rollup is optimistic Rollup introduced by John Adler in 2019. In short, it also put the data on-chain, but not using zk-SNARK for verification to achieve general-purpose applications. The amount of data becomes larger because users' signatures are put on-chain. Therefore the transaction speed will be less than ZK Rollup. The other part is that users need to participate in a validation game to ensure data validation because it does not use validity proof for verification.
 
 ## Our approach: Clover Protocol
 
@@ -26,11 +26,11 @@ In this whitepaper, we introduce a lightweight zkRollup framework, Clover Protoc
 
 ## Why Rollup on Nervos?
 
-Nervo's design philosophy is that the computation is done off-chain(L2, L3...), while the L1 blockchain, the Common Knowledge Base, is responsible for verification for the validity of the computation. This design paradigm makes Rollup(especially zk-Rollup) a natural and perfect L2 solution fit for CKB L1. Indeed, recently Nervos Foundation proposed Godwoken -- a framework to build Rollup solutions upon Nervos CKB, which offer optimistic rollup and zk rollup templates, and a bunch of customizable components. Therefore developers and service providers can composite their rollup solutions to fit different scenarios. 
+Nervo's design philosophy is that the computation is done off-chain(L2, L3...), while the L1 blockchain, the Common Knowledge Base, is responsible for verification for the validity of the computation. This design paradigm makes Rollup(especially zkRollup) a natural and perfect L2 solution fit for CKB L1. Indeed, recently Nervos Foundation proposed [Godwoken](https://github.com/nervosnetwork/godwoken/) -- a framework to build Rollup solutions upon Nervos CKB, which offer optimistic rollup and zk rollup templates, and a bunch of customizable components. Therefore developers and service providers can composite their rollup solutions to fit different scenarios. 
 
-The Clover protocol takes full advantage of the Cell model in the CKB architecture. The *type* field in the Cell enables secure updating of Commitment, and the updating process does not increase the amount of data in the Cell, thus reducing the Operator's cost. Similarly, transaction blocks committed to the Cell also consume no additional CKB and are only subject to the VM cycles consumed by the proof. Type-specified smart contracts relax the restriction on operator roles, so multiple operators can be introduced, preventing a single point of failure in Layer 2.
+The Clover protocol takes full advantage of the Cell model in the CKB architecture. The `lock` and `type` field in the Cell enables secure updating of Commitment, and the updating process does not increase the amount of data in the Cell, thus reducing the Operator's cost. Similarly, transaction blocks committed to the Cell also consume no additional CKB and are only subject to the VM cycles consumed by the proof. Type-specified smart contracts relax the restriction on operator roles, so multiple operators can be introduced, preventing a single point of failure in Layer 2.
 
-Clover uses one Cell as a Pool to hold all assets (one UDT) deposited by the user, and since there are only Transfer transactions in the Operator's submitted block, this Cell is consumed, creating a new Cell of the same size. For deposit, an additional UDT Cell needs to be merged with the asset pool as an input. For a withdraw operation, the user can withdraw his balance to a new Cell.
+Clover uses one Cell as a Pool (called Vault Cell) to hold all assets (one UDT) deposited by the user, and since there are only transfer transactions in the Operator's submitted block, this Cell is consumed, creating a new Cell of the same size. For deposit, an additional UDT Cell needs to be merged with the asset pool as an input. For a withdraw operation, the user can withdraw his balance to a new Cell.
 
 ## What is aSVC and why it's important?
 
@@ -39,28 +39,26 @@ Aggregable Sub-Vector Commitment (aSVC) is based on [KZG10] and requires a *Trus
 The scheme of aSVC does have the following advantages:
 
 1. aSVC supports aggregation of multiple proofs to prove membership of a subvector when a block is packed with multiple transactions and each transaction needs to carry a proof.
-2. aSVC's vector commitment is a point on an elliptic curve, and a commitment is only 64 bytes long if the elliptic curve group is of order 256bit or so. 
+2. aSVC's vector commitment is a point on an elliptic curve, and a commitment is only 64 bytes long if the elliptic curve group is of order 256 bits or so. 
 3. A vector commitment can represent a larger set in which each element is limited to 256 bits (BN254). Multiple vector commitments can be aggregated together directly when the elements to be aggregated need to hold more information. Thus more complex Layer-2 applications other than transfers can be supported.
 4. aSVC maintains and updates all user account information Proof's parallel acceleration is relatively high.
 
 The algorithmic complexity of aSVC (n is the length of the whole vector):
 
-1. Prove that the complexity of the update is O(1) 
-2. Update a commitment is O(1)
-3. Proof generation for an element is O(1)
-4. Verification algorithm is O(1)
-5. Prove all elements is O(n*log(n))
-6. Proof length is O(1)
+1. Prove that the complexity of the update is $O(1) $
+2. Update a commitment is $O(1)$
+3. Proof generation for an element is $O(1)$
+4. Verification algorithm is $O(1)$
+5. Prove all elements is $O(n*log(n))$
+6. Proof length is $O(1)$
 
-At a high level, a VC(Vector Commitment) scheme allows a prover to compute a (usually succinct) commitment $c$ to a vector $\vec{v} = [v_0, v_1, . . . , v_{n−1}]$ of $n$ elements where $v_i \in Z_p$. The Binding property ensures that there couldn't (or with neglibible probability in computational setting) exists two different vectors with same commitment. Therefore, commitment can be seen as a compressed digest of a vector. Vector commitment scheme differs from plain cryptographic commitment scheme that, the prover can generate a proof $\pi_i$ that $v_i$ is the element at position $i$ in $\vec{v}$, and any verifier can check it against the commitment $c$, making VC scheme more useful than plain Commitment. The prover needs a proving key $prk$ to commit to vectors and to compute proofs, while the verifier needs a verification key $vrk$ to verify proofs (usually $|vrk| <<|prk|$). 
+At a high level, a VC(Vector Commitment) scheme allows a prover to compute a (usually succinct) commitment $c$ to a vector $\vec{v} = [v_0, v_1, . . . , v_{n−1}]$ of $n$ elements where $v_i \in \mathbb{Z}_p$. The Binding property ensures that there couldn't (or with neglibible probability in computational setting) exists two different vectors with same commitment. Therefore, commitment can be seen as a compressed digest of a vector. Vector commitment scheme differs from plain cryptographic commitment scheme that, the prover can generate a proof $\pi_i$ that $v_i$ is the element at position $i$ in $\vec{v}$, and any verifier can check it against the commitment $c$, making VC scheme more useful than plain Commitment. The prover needs a proving key $prk$ to commit to vectors and to compute proofs, while the verifier needs a verification key $vrk$ to verify proofs (usually $|vrk|<<|prk|$). 
 
 An aSVC(aggregratable Subvector Vector Commitment scheme ) scheme has some additional features against plain vector commitments: 
 
 1. It support **updates**: if one or more elements in the vector change, the commitment and position proofs can be updated efficiently, instead of recomputing the commitment and proof from the whole new vector. For this, a static update key $upk_j$ tied only to the updated position $j$ is necessary. The proving, verification and update keys comprise the VC’s public parameters. 
 2. It is a **subvector** commitment (SVC) scheme that supports computing succinct proofs for $I$-subvectors ($(v_i)_{i∈I}$) where $I \subset [0,n)$. 
 3. It is **aggregatable**: multiple proofs $\pi_i$ for $v_i$ , $\forall i\in I$ can be aggregated into a single, succinct $I$-subvector proof $\pi_I$.
-
-
 
 In fact, Merkle Tree can be seen as a type of vector commitment. The Merkle root can be seen as the commitment of a vector formed by leaf values. The Merkle path of a leaf forms a position proof. Nonetheless, people hardly treat Merkle tree in a vector commitment perspective since the Merkle tree seems to be the de facto standard to do vector commitment for granted nowadays. However, aSVC scheme implements the proof update and verification in far faster than Merkle tree based solution. Recently, Tomescu et al. proposed an aSVC scheme [TAB+20], with scalable updates over pairing-friendly groups. Compared to other pairing-based VCs, it has constant-sized, aggregatable proofs updated with constant-sized update keys. Furthermore, it supports computing all proofs in quasilinear time. Meanwhile, Tomescu et al. proposed used this aSVC scheme to construct a stateless cryptocurrency, which has very low storage, communication, and computation overheads. Their protocol shows the huge potential of aSVC schemes in cryptocurrency space. Take payment use case as an example, to verify the validity of transaction data. Relayers need to verify the sender's balance on L2 is large than the amount sender proposed to send. This statement can be implemented by a position proof by vector commitment, proving the sender's precise balance at a low cost. More importantly, the proof of different sender's balance can be aggregated into one aggregated proof. Therefore the verification complexity is extremely low.
 
@@ -70,11 +68,9 @@ In fact, Merkle Tree can be seen as a type of vector commitment. The Merkle root
 2. Design and Implement a stateless cryptocurrency as L2 Rollup on Nervos CKB L1. 
 3. Evaluate the feasibility of aSVC based approach L2 for building Rollup on Nervos CKB. 
 
-## aSVC Explained
+# aSVC primitive
 
-### aSVC primer
-
-#### aSVC API
+## aSVC API
 
 $VC.KeyGen(1^\lambda, n)\rightarrow prk,vrk,\vec{upk}$ : Randomized algorithm that, given a security parameter $\lambda$ and an upperbound $n$ on vector size, returns a proving key $prk$, a verification key $vrk$ and updated keys $\vec{upk}$ , where the dimension of $\vec{upk}$ is $n$.
 
@@ -92,19 +88,19 @@ $VC.UpdatePosProof(\pi_{i}, \delta, i, j, upk_i,upk_j)\rightarrow \pi_{i}'$ : De
 
 $VC.AggregrateProofs(I,(\pi_i)*{i \in I}) \rightarrow \pi*{I}$ : Deterministic algorithm that, given proofs $\pi_i$ for $v_i$, aggregrates them into a succinct $i$-subvector proof $\pi_{I}$.
 
-### aSVC Security
+## aSVC Security
 
-#### commitment binding
+### commitment binding
 
 $ \forall \vec{v} \neq \vec{v}'$ , $ VC.Commit(prk,\vec{v}) \neq VC.Commit(prk,\vec{v}')$
 
-#### Commitment Update correctnetss
+### Commitment Update correctnetss
 
 let $\vec{v}'$ be the same vector as $\vec{v}$ except with $v_j + \delta$ rather than $v_j$ at position $j$,
 
 $ VC.Commit(prk,\vec{v}') = VC.UpdateComm(VC.Commit(prk,\vec{v}),j,upk_j)$
 
-#### PosProof Update correctness
+### PosProof Update correctness
 
 let $\vec{v}'$ be the same vector as $\vec{v}$ except with $v_j + \delta$ rather than $v_j$ at position $j$, 
 
@@ -118,7 +114,7 @@ $\pi_{i} \leftarrow UpdatePosProof(\pi_{i}, \delta, i, j, upk_i,upk_j)\rightarro
 
 $VC.VerifyPos(vrk,c',v_{i},i,\pi_{i}') = True$
 
-#### Proof aggregation correctness
+### Proof aggregation correctness
 
 $ \forall$ vectors $\vec{v}=(v_j)_{j\in[0,n)}$, $\forall$ index sets $I \subset[0,n)$, 
 
@@ -130,29 +126,92 @@ $\pi_{I} \leftarrow VC.AggregrateProofs(I,(\pi_i)_{i \in I})$
 
 $VC.VerifyPos(vrk,c,\vec{v}*{I},I,\pi*{I}) = True$
 
-#### Update Key Uniqueness
+### Update Key Uniqueness
 
-$\forall$ non deterministic Probalisitc Polynomial Time adversaries $A$， 
+$\forall$ non deterministic Probalisitc Polynomial Time adversaries $\mathcal{A}$， 
 
-$(i,upk,upk') \leftarrow A(1^{\lambda},prk,vrk,\vec{upk})$
+$(i,upk,upk') \leftarrow \mathcal{A}(1^{\lambda},prk,vrk,\vec{upk})$
 
 $Pr[VC.VerifyUPK(vrk,i,upk)=True \wedge Pr[VC.VerifyUPK(vrk,i,upk')=True \wedge upk\neq upk'] \leq negl(\lambda)$ 
 
-#### PosProof binding
+### PosProof binding
 
-$\forall$ non deterministic Probalisitc Polynomial Time adversaries $A$, if $\vec{v}*I=(v_i)*{i \in I}$ and $\vec{v}*J'=(v_j)*{j \in J}$: 
+$\forall$ non deterministic Probalisitc Polynomial Time adversaries $\mathcal{A}$, if $\vec{v}*I=(v_i)*{i \in I}$ and $\vec{v}*J'=(v_j)*{j \in J}$: 
 
-$(c,I,J,\vec{v}_I,\vec{v}_J',\pi_I,\pi_J) \leftarrow A(1^{\lambda},prk,vrk,\vec{upk})$
+$(c,I,J,\vec{v}_I,\vec{v}_J',\pi_I,\pi_J) \leftarrow \mathcal{A}(1^{\lambda},prk,vrk,\vec{upk})$
 
 $Pr[VC.VerifyPos(vrk,c,\vec{v}*{I},I,\pi*{I}) = True \wedge VC.VerifyPos(vrk,c,\vec{v}*{J},J,\pi*{J}) = True \wedge \exists k \in I \cap J, s.t. v_k \neq v_k'] \leq negl(\lambda)$
 
-## aSVC based L2 Rollup on Nervos CKB
+# aSVC based L2 Rollup on Nervos CKB
+
+In our system, there are 3 kinds of roles:
+
+- user：An end user may own some UDT token and wants to send token to, or receive token from others. A user can deposit UDT tokens from L1 to L2, or withdraw tokens from L2 to L1 at anytime by constructing and sending transactions on L1.
+- L2 relayer (also called operator/miner)：An operator collects a batch of L2 transactions, verify the validity of these transactions, computate and post the new state, together with validity proof and transaction information to SUV, in order to update L1 state.
+- L1 State Update Validator (SUV): An SUV verify the validity of state update, based on the validity proof on chain. An SUV can be implemented as a program consisting of a script and corresponding state parameters, all stored on L1 cell. the script field in commitment cell and vault are both SUV script.
+
+There are 2 types of actions on L2:
+
+- REGISTER: a user registers an account on L2.
+- TRANSFER: a user transfers token to others on L2.
+
+There are 3 types of actions on L1:
+
+- deposit: a depositor deposit his or her L1 funds to an L2 "account"
+- withdraw: a payee withdraw his or her L2 funds to an L1 "account"
+- post_block: a L2 relayer post new commitment and corresponding batch transactions to L1, the transactions include a $REGISTER$ transactions and b$TRANSFER$ transactions on L2.
+
+## Action on L2
+
+### Parameter Setup
+
+To support up to $n$ users, public parameters $(prk, vrk, \vec{upk})\leftarrow VC.KeyGen(1^\lambda , n)$ are generated via a trusted setup, which can be decentralized using MPC protocols. Miners need to store all $O(n)$ update keys to propose blocks and to validate blocks. The $prk$ is only needed for proof-serving nodes. 
+
+### L2 State
+
+The state is a vector $\vec{v}=((v_i))_{i\in[o,n)}$ of size $n$ that maps user $i$ to $v_i=(addr_i||nonce||bal_i)\in \mathbb{Z}_p$, where $bal_i$ is balance and $addr_i=H(i,upk_i,pk_i)$ can be seen as the address on L2, where $pk_i$ is user $i$ 's public key. At block height $h$, miners and users do not need to store the whole state, just its commitment $c_h$ at the latest block $Block_h$. 
+
+### Registering via $REGISTER$ Transactions. 
+
+$REGISTER$ transactions are used to register new users and assign the unique id to user.  Each block $Block_h$ stores a count of users registered so far $cnt_h$. To register, a user uses the secret key $sk$ with a corresponding public key $pk$ that he or she uses on L1, to broadcasts an $REGISTER$ transaction $tx=[REGISTER,pk]$. 
+
+A miner working on block $Block_{h+1}$ who receives $tx$, proceeds as follows:
+
+1. setting $i=cnt_{h+1}$ and increments the count $cnt_{h+1}$ of number of registerd users
+2. updating the VC via $c_{h+1}=VC.UpdateComm(c_{h+1},(addr_i||0),i,upk_i)$, where $c_{h+1}=c_h$ if $tx$ is the first transaction the miner packs on block $Block_{h+1}.$
+3. incorporating $tx$ in block $h+1$ as $tx'=[REGISTER, (i,upk_i,pk_i)]$ 
+
+$(i,upk_i,pk_i)$ is included so others can correctly update commitment and position proof when they process $tx'$.
+
+### Transfering tokens via $TRANSFER$ Transactions
+
+When transfering $v$ tokens to user $j$, user $i$ must first obtain $(i,upk_i,pk_i)$. Then, user $i$ broadcasts a $TRANSFER$ transaction, signed with $sk_i$: $tx=[TRANSFER,nonce,h,(i,upk_i,pk_i),j,upk_j,v,\pi_{i,h},v']$.
+
+A miner working on block $h+1$ proceeds as follows
+
+1. checking that $v\leq v'$ and verifies the proof $\pi_{i,h}$ that user $i$ has $v'$ tokens at block $h$ via $VC.VerifyPos(vrk,c_h,(addr_i||nonce-1||v'),i,\pi_{i,h})$. If a sender send multiple transactions in a block, the $nonce$ here is the least nonce value of all the transacations the sender broadcasts. Note that if a miner has received or will receive another trasaction from user $i$ later, miner needs to carefully account for $i$'s new $v'-v$ balance.
+2. updating $i$'s balance in block $Block_{h+1}$ with $c_{h+1}=VC.UpdateComm(c_{h+1},-v,i,upk_i)$ and does the same for $j$ with $c_{h+1}=VC.UpdateComm(c_{h+1},v,j,upk_j)$ 
+
+### Validating Blocks
+
+The miner who has the right to propose block at block height $h$ can sign the new block $Block_{h+1}$ which consists of commitment $c_{h+1}$ and all the transactions ($a$ $REGISTER$ transactions and $b$ $TRANSFER$ transactions ) . 
+
+Suppose a miner receives a new block $Block_{h+1}$ with digest $c_{h+1}$ that has $b$ $TRANSFER$ transactions, the miner proceeds as follows  ($REGISTER$ transactions can be handled analogously): 
+
+1. Check balances: for each transaction, miner checks that $v\leq v'$ and user $i$ has balance $v'$ at block $Block_{h}$ via $VC.VerifyPos(vrk, c_h, (addr_i||nonce-1||v'),i,\pi_{i,h}=True$, note that if $\pi_{i,h}$ is aggregrated, $VC.VerifyPos$() function only needs to be executed once. 
+2. Check commitment: checks $c_{h+1}$ has been computed directly from $c_{h}$ and the b new transactions. Specifically, miner sets $c'=c$ and for eah $tx$, computing $c'=VC.UpdateComm(c',-v,i,upk_i)$ and $c'=VC.UpdateComm(c',v,j,upk_j).$ checks that $c'=c_{h+1}$
+
+### User sychronization
+
+Consider a user $i$ who has processed the ledger up to block height $h$ and has commitment $c_{h}$ and proof $\pi_{i,h}$. Eventually, user receives a new block $Block_{h+1}$ with commitment $c_{h+1}$. If user needs to send transaction at block , user$Block_{h+1}$ needs to update VC position proof, in order to add the proof into the transaction at block $Block_{h+1}$. Initially user sets $\pi_{i,h+1}=\pi_{i,h}$. For each transaction, user update proof with regarding to the transaction type and transaction context. We stress that users can safely be offline and miss new blocks, so does the miner. Eventually ,when a user or a miner comes back online, he or she downloads the missed blocks, updates proof and is ready to transact or mine. 
+
+## L1 action
 
 ### post_block
 
 ![image-post_block](assets/post-block.png)
 
-Suppose we create a data cell on CKB, storing the latest commitment of the aSVC based stateless cryptocurrency blockchain described above. The commitment cell can be updated (create a L1 transaction to destroy the old cell and create a new cell to store the variable) if and only if commitment update logic = True. Therefore, the lock script of commitment data cell is the logic described above in "validating blocks" paragraph. Transactions of the block (i.e., L2 rollup here) is used to verify the validity of state transistion, and will not be used later. Therefore, $a$ $INIT$ transactions and $b$ $SPEND$ transactions can be put in the witness field in the L1 transaction that update the commitment. We add a $tx_type$ field in the witness in order to let lock script distinguish different kinds of action, i.e., the lock script first checks the $tx_type$ and then do the verification against the corresponding $tx_type$. In addition, the lock script of commitment data cell shall also verify that there should be only one input cell contains old commitment and one output cell contains new commitment, in order to ensure that there is only one commitment data cell at each L1 block height. For simplicity, we omit input cell which is used for paying transaction fees. Constant values like public parameters of VC is stored in a fixed cell. When a script needs to load a constant, the data cell that stores the constant will be put in the cell_dep field of the L1 transaction. 
+Suppose we create a data cell on CKB, storing the latest commitment of the aSVC based stateless cryptocurrency blockchain described above. The commitment cell can be updated (create a L1 transaction to destroy the old cell and create a new cell to store the variable) if and only if commitment update logic = True. Therefore, the lock script of commitment data cell is the logic described above in "validating blocks" paragraph. Transactions of the block (i.e., L2 rollup here) is used to verify the validity of state transistion, and will not be used later. Therefore, $a$ $REGISTER$ transactions and $b$ $TRANSFER$ transactions can be put in the witness field in the L1 transaction that update the commitment. We add a $tx_type$ field in the witness in order to let lock script distinguish different kinds of action, i.e., the lock script first checks the $tx_type$ and then do the verification against the corresponding $tx_type$. In addition, the lock script of commitment data cell shall also verify that there should be only one input cell contains old commitment and one output cell contains new commitment, in order to ensure that there is only one commitment data cell at each L1 block height. For simplicity, we omit input cell which is used for paying transaction fees. Constant values like public parameters of VC is stored in a fixed cell. When a script needs to load a constant, the data cell that stores the constant will be put in the cell_dep field of the L1 transaction. 
 
 The data in CKB Transaction witness field will not stored in a cell, so the Rollup system don't need to pay for the data of L2 transactions, witness data is charged by transaction fee, which is quite low at $10^{-8}$ CKByte per bit. Since the position balance proofs can be aggregrated into one group element, the additional L2 transaction payload post to L1 can be ignored, compared to SNARK based zk-Rollup. (We remark here, this also signifcantly shows the advantage of aSVC over Merkle Tree).
 
@@ -244,20 +303,6 @@ The lock script of vault cell and commitment cell is exactly same (with same cod
 As same as deposit action, a payee can withdraw at any time permissionlessly, as long as payee sychronize the latest valid block.After this transaction is settled on CKB, miners and users can update balance position proof for $\pi_{j}'$ by $\pi_{j}'=VC.UpdatePosProof(\pi_{j}, \delta, j, i, upk_j,upk_i)$
 
 As same as deposit action, we remark that, a payee can withdraw fund from his or her own L2 "account" to any user "account" on L1. Therefore, if $pk_{row\_receiver}$ does not equal payee's $pk$, the actual action is a transfer action, i.e, payee transfer $withdraw\_amount$ tokens from his or her L2 account to someone else's L1 account.
-
-### Recap
-
-To recap, in our system,there are 3 kinds of roles:
-
-- user：An end user may own some UDT token and wants to send token to, or receive token from others. A user can deposit UDT tokens from L1 to L2, or withdraw tokens from L2 to L1 at anytime by constructing and sending transactions on L1.
-- L2 relayer(also called operator/miner)：An operator collects a batch of L2 transactions, verify the validity of these transactions, computate and post the new state, together with validity proof and transaction information to SUV, in order to update L1 state.
-- L1 State Update Validator (SUV): An SUV verify the validity of state update, based on the validity proof on chain. An SUV can be implemented as a program consisting of a script and corresponding state parameters, all stored on L1 cell. the script field in commitment cell and vault are both SUV script.
-
-There are 3 types of actions:
-
-- Deposit: a depositor deposit his or her L1 funds to an L2 "account"
-- Withdraw: a payee withdraw his or her L2 funds to an L1 "account"
-- Post_block: a L2 relayer post new commitment and corresponding batch transactions to L1, the transactions include a $INIT$ transactions and b$SPEND$ transactions.
 
 ### Security analysis
 
@@ -367,53 +412,53 @@ The code of  can be divided into on-chain contract part, off-chain node part and
    * **ckb_rpc**: rpc interface to read data from the chain.
    * **test**: test scripts
 
-## Next Step
+# Next Step
 
-### Solving the issue of creating invalid commitment cell
+## Solving the issue of creating invalid commitment cell
 There remains a small issue in the design of current version: if an attacker creates a transaction, the transaction output cell contains a commitment cell, i.e., the `lock_script` field match the pre_defined commitment cell `lock_script`. According to the rule, if the commitment is updated, the attacker must put the commitment cell at latest height in the input cell. However, the transaction verification rule cannot prevent an attacker from not putting the latest commitment cell in this transaction. Therefore, the attacker can create commitment cell with arbitrary commitment data in the cell `data` filed, without destroying the latest valid commitment cell.
 
 It is easy to solve this problem. We can add some verification rules in the commitment data cell's type script in order to ensure that only one commitment cell can be alive at each block height: The commitment cell can be initialized only once. After that, if the type script ensures that if a commitment cell is put in the output cell in a transaction, there must be one and only one commitment cell in the input of transaction. Therefore, if someone wants to update the commitment, he or she must destroy the old commitment cell, preventing the attacks described above.
 
 We haven't implement this in the current version due to the time limit, we manage to implement this in the next version.
 
-### Put constant parameter in a fixed cell and "invoke" them in `cell_deps` field
+## Put constant parameter in a fixed cell and "invoke" them in `cell_deps` field
 
 Constant parameters that SUV script uses during execution is designed to be stored in a fixed living data cell, i.e., every time SUV executes, the cells contain constant parameters shall put in the `cell_deps` field of the transaction. However, due to some technical reasons, at this moment, these cells are placed in `input_cell` and `output_cell` field.
 
-### Add L2 tx fee
+## Add L2 tx fee
 
-The transaction fee is ignored in this version. However, this is not reasonable to relayer. 
+The transaction fee is ignored in this version. However, this is not reasonable to relayer. We will add transaction fee in the next update.
 
-### Reduce L1 state
+## Reduce L1 state
 
-Public constant parameters are stored on Layer-1 cell, among them, the size of $\vec{upk}$ equals the predefined amount of accounts in the setup, so it cannot be too big. There's a VC API that can test the validity of a $upk$, with one elliptical curve pairing. We will do some tests and weighing the tradeoffs. 
+Public constant parameters are stored on Layer-1 cell, among them, the size of $\vec{upk}$ equals the predefined amount of accounts in the setup, so it cannot be too big. There's a VC API that can test the validity of a single update key$upk$, with doing just one elliptical curve pairing. We will do some tests and weighing the tradeoffs. 
 
-### Reduce verification cycles
+## Reduce verification cycles
 
 The Clover protocol has not yet been implemented to compress the transaction validity checking process, we will use the Marlin protocol[7] to compress the transaction validity checking calculation in the next update.
 
 + Signature Verification Process
-+ Range proofs  of account balances
++ Range proofs of account balances
 
-This compresses the validation overhead of the on-chain computation to O(1), plus the hash computation of the transaction data.
+This compresses the validation overhead of the on-chain computation to $O(1)$, plus the hash computation of the transaction data.
 
-### Support more tokens in L2
+## Support more tokens in L2
 
 We design the current system without considering more than one token. Thanks to the feasibility of CKB, it is easy to issue UDT tokens without redeploying contracts, make a new UDT instance make it very friendly to other apps. If our system wants to support more than 1 UDT tokens, we need to consider leveraging the advantage of this CKB feature. 
 
-### Add signature verification to validity proof
+## Add signature verification to validity proof
 
 In the current version, we focus on implementing the aSVC scheme and get some sense about the efficiency in verifying vector values and updating proofs at a low cost. However, the validity of transactions includes other factors, especially signature validity proof. We intend to use signature schemes with an aggregated feature. We also plan to use succinct ZKPs to generate signature validity proof. Both methods can solve the problem, but the performance trade-off differs a lot. So we will do further research and test to choose the proper solution.
 
-### Expand scenarios from payment to more
+## Expand scenarios from payment to more
 
 In the current version, the Rollup only supports payment related action. We managed to explore more scenarios in the future, such as DEX.
 
-### Multiple operators 
+## Multiple operators 
 
-In order to improve the user experience, the proof of a user's account balance needs to be updated in real time, and this can be done by the Operator. Experimental data shows that updating the proof has a computational complexity of O(1), but maintaining the proof for millions of users is computationally intensive. By introducing multiple Operators, proof maintenance can be spread across multiple nodes. 
+In order to improve the user experience, the proof of a user's account balance needs to be updated in real time, and this can be done by the Operator. Experimental data shows that updating the proof has a computational complexity of $O(1)$, but maintaining the proof for millions of users is computationally intensive. By introducing multiple Operators, proof maintenance can be spread across multiple nodes. 
 
-## References
+# References
 
 - [1] Jan Xie.  Nervos CKB: A Common Knowledge Base for Crypto-Economy https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0002-ckb/0002-ckb.md
 - [2] Xuejie Xiao. CKB-VM. https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0003-ckb-vm/0003-ckb-vm.md
