@@ -23,13 +23,13 @@ capsule build --release
 1. Run mock of ckb dev chain
 
 ```sh
-cargo run --bin mock-ckb
+cargo run --bin mock-ckb --release
 ```
 
 2. Run layer2 node
 
 ```sh
-cargo run --bin mock-ckb
+cargo run --bin rollup --release
 ```
 
 3. Install test-tools

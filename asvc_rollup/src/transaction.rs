@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{String, Vec};
 
-pub const ACCOUNT_SIZE: usize = 2;
+pub const ACCOUNT_SIZE: usize = 128;
 
 pub type TxHash = Vec<u8>;
 
@@ -173,18 +173,18 @@ impl<E: PairingEngine> Transaction<E> {
 
     #[rustfmt::skip]
     pub fn point_value(&self) -> E::Fr {
-        let mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
-        let mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
+        let _mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
+        let _mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
 
         match self.tx_type {
             TxType::Deposit(..) | TxType::Withdraw(..) => {
-                self.addr * &mul_160
-                    + &(mul_128 * &u32_to_fr::<E>(self.nonce))
+                self.addr * &_mul_160
+                    + &(_mul_128 * &u32_to_fr::<E>(self.nonce))
                     + &u128_to_fr::<E>(self.balance)
             }
             TxType::Transfer(..) => {
-                self.addr * &mul_160
-                    + &(mul_128 * &u32_to_fr::<E>(self.nonce - 1))
+                self.addr * &_mul_160
+                    + &(_mul_128 * &u32_to_fr::<E>(self.nonce - 1))
                     + &u128_to_fr::<E>(self.balance)
             }
             TxType::Register(..) => {
@@ -197,8 +197,7 @@ impl<E: PairingEngine> Transaction<E> {
 
     #[rustfmt::skip]
     pub fn delta_value(&self) -> (E::Fr, E::Fr) {
-        let mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
-        let mul_128: E::Fr = E::Fr::from(2).pow(&[128]);
+        let _mul_160: E::Fr = E::Fr::from(2).pow(&[160]);
         let zero = E::Fr::zero();
 
         match self.tx_type {
@@ -210,11 +209,11 @@ impl<E: PairingEngine> Transaction<E> {
             }
             TxType::Transfer(_from, _to, amount) => {
                 let amount_fr = u128_to_fr::<E>(amount);
-                (amount_fr.neg() + &mul_160,
+                (amount_fr.neg() + &_mul_160,
                  amount_fr)
             }
             TxType::Register(..) => {
-                (self.addr * &mul_160, zero)
+                (self.addr * &_mul_160, zero)
             }
         }
     }

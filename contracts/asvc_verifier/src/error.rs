@@ -11,6 +11,7 @@ pub enum Error {
     Amount,
     Verify,
     Upk,
+    Commit,
 }
 
 impl From<SysError> for Error {

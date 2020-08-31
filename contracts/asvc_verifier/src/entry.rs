@@ -332,7 +332,7 @@ fn verify(
 
     debug!("pre & now block deserialization ok");
     if pre_block.new_commit != now_block.commit {
-        return Err(Error::Verify);
+        return Err(Error::Commit);
     }
     debug!("pre & now block is eq!");
 
